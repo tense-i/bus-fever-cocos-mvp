@@ -1,9 +1,12 @@
-import { Node, Vec3 } from 'cc';
+import { log, Node, Vec3 } from 'cc';
 
 type Position = [number, number, number];
 
 export interface ConveyorPaths {
     exitPercent: number;
+    capacity: number;
+    exitStartPercent: number;
+    exitEndPercent: number;
     spacing: number;
     ring: Position[];
     entry: Position[];
@@ -22,7 +25,10 @@ export class PassengerConveyor {
     private readonly finalFront: number;
     private readonly sample = new Vec3();
     private elapsed = 0;
-    private advanced = 0;
+    private front: number;
+    private admitted = 0;
+    private readonly cells: number[];
+    readonly exitCells: number[] = [];
 
     constructor(ground: Node, private readonly paths: ConveyorPaths, avatarCount: number) {
         const local = ([x, y, z]: Position) => ground.inverseTransformPoint(new Vec3(), new Vec3(-x, y, z));
@@ -42,44 +48,69 @@ export class PassengerConveyor {
         this.merge = mergeIndex / (this.ring.length - 1);
         const ringLength = this.length(this.ring);
         this.entrySpan = this.length(this.entry) / ringLength;
-        this.step = Math.min(paths.spacing / ringLength, 1 / Math.ceil(avatarCount / rowWidth));
-        const queueSpan = (avatarCount - 1) * this.step / rowWidth;
+        this.cells = Array(Math.min(avatarCount, paths.capacity * rowWidth)).fill(-1);
+        this.step = 1 / paths.capacity;
         const exit = this.wrap(paths.exitPercent - this.merge);
-        // The first row keeps rolling until the last row has cleared the merge.
-        this.finalFront = exit + Math.max(0, Math.ceil(queueSpan - exit));
+        this.finalFront = exit + 1.06;
+        this.front = -this.entrySpan;
     }
 
     reset(riders: readonly Node[]): void {
         this.elapsed = 0;
-        this.advanced = 0;
+        this.front = -this.entrySpan;
+        this.admitted = this.cells.length;
+        this.exitCells.length = 0;
+        for (let i = 0; i < this.cells.length; i++) this.cells[i] = i;
         riders.forEach((rider) => { rider.active = false; });
     }
 
     update(
-        dt: number, riders: readonly Node[], departedQueue: number,
+        dt: number, riders: readonly Node[],
         setMoving: (index: number, moving: boolean) => void,
     ): boolean {
         this.elapsed = Math.min(fillDuration, this.elapsed + dt);
-        const previous = this.advanced;
-        this.advanced = Math.min(departedQueue, this.advanced + dt * 24);
+        const previous = this.front;
         const filling = this.elapsed < fillDuration;
-        const moving = filling || this.advanced > previous;
-        const front = (this.finalFront + this.entrySpan) * this.elapsed / fillDuration - this.entrySpan;
-        for (let index = departedQueue; index < riders.length; index++) {
-            const rider = riders[index];
-            const distance = front - this.step * (index - this.advanced) / rowWidth;
+        if (filling) this.front = (this.finalFront + this.entrySpan) * this.elapsed / fillDuration - this.entrySpan;
+        else this.front = Math.max(this.finalFront, previous + dt * 0.115);
+        this.exitCells.length = 0;
+        for (let cell = 0; cell < this.cells.length; cell++) {
+            const lag = this.step * Math.floor(cell / rowWidth);
+            const distance = this.front - lag;
+            if (this.cells[cell] < 0 && this.admitted < riders.length &&
+                Math.floor(distance) > Math.floor(previous - lag)) {
+                this.cells[cell] = this.admitted++;
+                log(`[OwnedGameplay] belt-refill rider=${this.cells[cell]} cell=${cell}`);
+            }
+            const index = this.cells[cell];
+            if (index < 0) continue;
             if (distance < -this.entrySpan) continue;
-            const lane = (index % rowWidth - (rowWidth - 1) / 2) * laneSpacing;
+            const rider = riders[index];
+            const lane = (cell % rowWidth - (rowWidth - 1) / 2) * laneSpacing;
             rider.active = true;
             if (distance < 0) {
-                this.place(rider, this.entry, 1 + distance / this.entrySpan, lane, moving);
+                this.place(rider, this.entry, 1 + distance / this.entrySpan, lane, true);
             } else {
-                this.place(rider, this.ring, this.wrap(this.merge + distance), lane, moving);
+                const percent = this.wrap(this.merge + distance);
+                this.place(rider, this.ring, percent, lane, true);
+                if (percent >= this.paths.exitStartPercent && percent <= this.paths.exitEndPercent) this.exitCells.push(cell);
             }
-            setMoving(index, moving);
+            setMoving(index, true);
+        }
+        for (let i = this.admitted; i < riders.length; i++) {
+            const distance = Math.min(0, this.front - 1) - this.step * (1 + Math.floor((i - this.admitted) / rowWidth));
+            if (distance < -this.entrySpan) continue;
+            const lane = ((i - this.admitted) % rowWidth - 2) * laneSpacing;
+            riders[i].active = true;
+            this.place(riders[i], this.entry, 1 + distance / this.entrySpan, lane, true);
+            setMoving(i, filling);
         }
         return !filling;
     }
+
+    passengerAt(cell: number): number { return this.cells[cell]; }
+
+    release(cell: number): void { this.cells[cell] = -1; }
 
     private length(points: readonly Vec3[]): number {
         return points.slice(1).reduce((sum, point, index) => sum + Vec3.distance(points[index], point), 0);

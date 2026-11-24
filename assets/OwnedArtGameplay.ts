@@ -165,7 +165,7 @@ export class OwnedArtGameplay extends Component {
         this.vehicleDrive?.update(dt);
         if (this.ready && this.conveyor) {
             const settled = this.conveyor.update(
-                dt, this.riders, this.round.consumed, this.setConveyorMotion,
+                dt, this.riders, this.setConveyorMotion,
             );
             if (settled && !this.introReady) {
                 this.introReady = true;
@@ -502,7 +502,8 @@ export class OwnedArtGameplay extends Component {
         tween(car).to(0.56, { scale: stationScale }, { easing: 'smooth' }).start();
         this.vehicleDrive!.enter(car, bay.position, bay.rotation, () => {
             this.vehicleModels.get(vehicle.id)!.arrow.active = false;
-            this.round.park(slot);
+            const belt = this.conveyor!;
+            this.round.park(slot, belt.exitCells.map(cell => this.round.queue[belt.passengerAt(cell)]).filter(Boolean));
             this.setSeatBadge(slot, vehicle.route, levelOneSeats);
             this.report('parked', vehicle.id);
             this.playAvailableBoarding();
@@ -511,8 +512,12 @@ export class OwnedArtGameplay extends Component {
 
     private playAvailableBoarding(): void {
         if (this.resultShown || this.boardingWait > 0) return;
-        const slot = this.round.boardingSlot();
-        if (slot < 0) {
+        const belt = this.conveyor!;
+        const cell = belt.exitCells.find(cell => {
+            const index = belt.passengerAt(cell);
+            return index >= 0 && this.round.boardingSlot(this.round.queue[index]) >= 0;
+        });
+        if (cell === undefined || this.round.outcome !== 'playing') {
             const outcome = this.round.outcome;
             if (outcome !== 'playing') {
                 this.resultShown = true;
@@ -521,8 +526,11 @@ export class OwnedArtGameplay extends Component {
             }
             return;
         }
+        const index = belt.passengerAt(cell);
+        const slot = this.round.boardingSlot(this.round.queue[index]);
         const { vehicle } = this.round.bays[slot]!;
-        const index = this.round.reserve(slot);
+        belt.release(cell);
+        this.round.reserve(slot);
         this.boardingWait = boardingInterval;
         const rider = this.riders[index];
         const renderer = this.riderRenderers[index];

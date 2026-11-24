@@ -24,3 +24,5 @@
 adb -s emulator-5586 install -r "$apk"
 bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586
 ```
+
+环道按原 Prefab 的 39 个位置运行，每个位置按五人一排显示。空位随环道转动，经过右上入口时由候车乘客补入；同色车辆停稳且乘客经过出口区间时开始登车。录屏对照采用约每秒 0.115 圈的拟合速度。

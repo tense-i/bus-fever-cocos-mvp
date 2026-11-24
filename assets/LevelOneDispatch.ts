@@ -20,6 +20,7 @@ export class LevelOneDispatch {
     readonly totalPassengers = this.queue.length;
     boarded = 0;
     consumed = 0;
+    private blocked = false;
 
     constructor(vehicles: readonly Vehicle[]) {
         this.ready = new Set(vehicles.map(({ id }) => id));
@@ -27,7 +28,7 @@ export class LevelOneDispatch {
 
     get outcome(): Outcome {
         if (this.consumed === this.queue.length && this.bays.every((bay) => bay === null)) return 'won';
-        if (this.boarded === this.consumed && this.bays.every((bay) => bay?.stage === 'parked') && this.boardingSlot() < 0) return 'lost';
+        if (this.blocked) return 'lost';
         return 'playing';
     }
 
@@ -38,18 +39,19 @@ export class LevelOneDispatch {
         return slot;
     }
 
-    park(slot: number): void {
+    park(slot: number, atExit: Route[]): void {
         this.bays[slot]!.stage = 'parked';
+        this.blocked = this.boarded === this.consumed && this.bays.every(bay => bay?.stage === 'parked')
+            && atExit.length > 0 && atExit.every(route => this.boardingSlot(route) < 0);
     }
 
-    boardingSlot(): number {
-        const route = this.queue[this.consumed];
+    boardingSlot(route: Route): number {
         return this.bays.findIndex((bay) => bay?.stage === 'parked' && bay.vehicle.route === route && bay.seatsLeft > bay.reserved);
     }
 
-    reserve(slot: number): number {
+    reserve(slot: number): void {
         this.bays[slot]!.reserved++;
-        return this.consumed++;
+        this.consumed++;
     }
 
     board(slot: number): number {

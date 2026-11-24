@@ -74,12 +74,8 @@ wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 1
 rg -F 'vat idle=1+60 move=61+19 board=80+19' "$proof/runtime-current.log"
 capture ready
 tap_car Y1
-wait_log '"event":"parked","vehicle":"Y1"' 1
-capture first-bay
 tap_car Y2
-sleep 0.14
 tap_car R1
-sleep 0.14
 tap_car R2
 wait_log '"event":"lost"' 1
 capture lost
@@ -93,16 +89,20 @@ tap_car Y1
 wait_log '"event":"parked","vehicle":"Y1"' 2
 sleep 0.20
 capture concurrent-parking
-wait_log 'boarded B1 count=40 remaining=0' 1
+wait_log '"event":"departed","vehicle":"B1"' 1
+capture after-blue-wave
+sleep 1
+capture after-blue-wave-plus-one
+wait_log '[OwnedGameplay] belt-refill ' 1
 sleep 0.54
 capture exit-motion
 wait_log '"event":"departed","vehicle":"B1"' 1
 tap_car Y2
 sleep 0.55
 tap_car B2
-wait_log 'boarded B2 count=60 remaining=20' 1
+wait_log '"event":"parked","vehicle":"B2"' 1
 tap_car R1
-wait_log 'count=196 remaining=4' 1
+wait_log '"event":"departed","vehicle":"Y1"' 1
 tap_car R2
 wait_log '"event":"won"' 1
 wait_log '[OwnedGameplay] victory-spine idle' 1
@@ -155,8 +155,11 @@ counts={}
 starts=0
 in_flight=0
 peak=0
+refilled=[]
 for line in Path(sys.argv[1]).read_text().splitlines():
     if '"event":"won"' in line: break
+    refill=re.search(r'belt-refill rider=(\d+) cell=(\d+)',line)
+    if refill: refilled.append(int(refill[1]))
     if '[OwnedGameplay] animate-board ' in line:
         starts+=1
         in_flight+=1
@@ -170,6 +173,7 @@ for line in Path(sys.argv[1]).read_text().splitlines():
 assert set(counts)==set("B1 B2 Y1 Y2 R1 R2".split())
 assert all(seq==list(range(39,-1,-1)) for seq in counts.values())
 assert starts==240 and in_flight==0 and peak>1
+assert refilled==list(range(195,240))
 Path(sys.argv[2]).write_text(json.dumps({"boardings":starts,"peakInTransit":peak,"countsByVehicle":{bus:len(seq) for bus,seq in counts.items()}},indent=2)+"\n")
 PY
 cat "$proof/assertion.txt" "$proof/individual-boarding.json" "$proof/pause-assertion.txt"
