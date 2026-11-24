@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "f1b09de6-dd82-456d-9d60-1374bf94c22a",
+  "files": [],
+  "subMetas": {
+    "3b918": {
+      "importer": "gltf-mesh",
+      "uuid": "f1b09de6-dd82-456d-9d60-1374bf94c22a@3b918",
+      "displayName": "",
+      "id": "3b918",
+      "name": "Car_P_02_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 2
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "f1b09de6-dd82-456d-9d60-1374bf94c22a@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "7594d": {
+      "importer": "gltf-scene",
+      "uuid": "f1b09de6-dd82-456d-9d60-1374bf94c22a@7594d",
+      "displayName": "",
+      "id": "7594d",
+      "name": "bay-seat-badge.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "f1b09de6-dd82-456d-9d60-1374bf94c22a@3b918"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "f1b09de6-dd82-456d-9d60-1374bf94c22a@ea6e2"
+      ],
+      "scenes": [
+        "f1b09de6-dd82-456d-9d60-1374bf94c22a@7594d"
+      ]
+    }
+  }
+}

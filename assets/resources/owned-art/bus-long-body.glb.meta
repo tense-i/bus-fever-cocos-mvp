@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "365c9847-eab8-40d1-94ce-4e0d9976c724",
+  "files": [],
+  "subMetas": {
+    "d5a34": {
+      "importer": "gltf-mesh",
+      "uuid": "365c9847-eab8-40d1-94ce-4e0d9976c724@d5a34",
+      "displayName": "",
+      "id": "d5a34",
+      "name": "Bus_001_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 974
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "365c9847-eab8-40d1-94ce-4e0d9976c724@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "0dd0b": {
+      "importer": "gltf-scene",
+      "uuid": "365c9847-eab8-40d1-94ce-4e0d9976c724@0dd0b",
+      "displayName": "",
+      "id": "0dd0b",
+      "name": "bus-long-body.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "365c9847-eab8-40d1-94ce-4e0d9976c724@d5a34"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "365c9847-eab8-40d1-94ce-4e0d9976c724@ea6e2"
+      ],
+      "scenes": [
+        "365c9847-eab8-40d1-94ce-4e0d9976c724@0dd0b"
+      ]
+    }
+  }
+}

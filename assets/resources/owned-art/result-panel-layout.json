@@ -1,0 +1,231 @@
+{
+  "won": {
+    "prefab": "assets/busjam/game/bundleables/ui/victorypanel.prefab",
+    "maskAlpha": 0.8509804010391235,
+    "maskSizeDelta": [
+      1000.0,
+      1000.0
+    ],
+    "replayPosition": [
+      -14.0,
+      -388.0
+    ],
+    "layers": [
+      {
+        "texture": "victory-title",
+        "sourcePath": "/VictoryPanel/All_Empty/Title_Img",
+        "sourceId": "CAB-c8832cbea2d488313bd7602312fbcbb2:-987349137527174068",
+        "spriteName": "Main_Victory_Title",
+        "position": [
+          0.0,
+          372.0
+        ],
+        "size": [
+          1012.0,
+          228.0
+        ],
+        "slice": null,
+        "cropTopLeft": [
+          0,
+          0
+        ],
+        "sha256": "ec15bef0c2704a20a2377a48311d37c3dabea759dee6fb72667337845e71e825"
+      },
+      {
+        "texture": "victory-coins",
+        "sourcePath": "/VictoryPanel/All_Empty/Gold_Img",
+        "sourceId": "CAB-c8832cbea2d488313bd7602312fbcbb2:7739162010587724341",
+        "spriteName": "Main_ShopPanel_Icon_Coins2",
+        "position": [
+          0.0,
+          90.0
+        ],
+        "size": [
+          418.0,
+          418.0
+        ],
+        "slice": null,
+        "cropTopLeft": [
+          21,
+          58
+        ],
+        "sha256": "fee0ace00cdad066e0075fb39ce8742988e01d7cf005223db426d960183d306c"
+      }
+    ],
+    "victory": {
+      "character": {
+        "position": [
+          21.0,
+          328.0
+        ],
+        "scale": 0.33500000834465027
+      },
+      "rewardPosition": [
+        10.0,
+        -6.0
+      ],
+      "button": {
+        "position": [
+          3.0,
+          -491.0
+        ],
+        "size": [
+          484.0,
+          176.0
+        ],
+        "labelPosition": [
+          -1.5,
+          -486.0
+        ],
+        "label": "Next",
+        "layers": [
+          {
+            "texture": "victory-button-shadow-deep",
+            "position": [
+              1.5,
+              -506.5
+            ],
+            "size": [
+              484.0,
+              136.0
+            ],
+            "slice": [
+              70.0,
+              71.0,
+              70.0,
+              72.0
+            ]
+          },
+          {
+            "texture": "victory-button-shadow",
+            "position": [
+              1.5,
+              -503.5
+            ],
+            "size": [
+              484.0,
+              148.0
+            ],
+            "slice": [
+              45.0,
+              44.0,
+              45.0,
+              44.0
+            ],
+            "tint": [
+              199,
+              102,
+              38,
+              255
+            ]
+          },
+          {
+            "texture": "victory-button-color",
+            "position": [
+              1.5,
+              -490.0
+            ],
+            "size": [
+              484.0,
+              148.0
+            ],
+            "slice": [
+              69.0,
+              0.0,
+              69.0,
+              0.0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "lost": {
+    "prefab": "assets/busjam/game/bundleables/ui/failpanel.prefab",
+    "maskAlpha": 0.0,
+    "maskSizeDelta": [
+      0.0,
+      0.0
+    ],
+    "replayPosition": [
+      -1.0,
+      -213.70001220703125
+    ],
+    "layers": [
+      {
+        "texture": "failure-board",
+        "sourcePath": "/FailPanel/SafeArea/All_Anim/Revive_Empty/Board_Bg",
+        "sourceId": "CAB-c8832cbea2d488313bd7602312fbcbb2:3829166763255880048",
+        "spriteName": "Main_Prop_Bg",
+        "position": [
+          0.0,
+          200.0
+        ],
+        "size": [
+          850.0,
+          1082.0
+        ],
+        "slice": [
+          146.0,
+          147.0,
+          146.0,
+          266.0
+        ],
+        "cropTopLeft": [
+          0,
+          0
+        ],
+        "sha256": "6ef47f57bc8696c49d2dc5fde20c5d506b2c526bff56ab081b888dc33d88f39a"
+      },
+      {
+        "texture": "failure-inner",
+        "sourcePath": "/FailPanel/SafeArea/All_Anim/Revive_Empty/MidBg_Img",
+        "sourceId": "CAB-c8832cbea2d488313bd7602312fbcbb2:-1575662288876229381",
+        "spriteName": "Main_Setting_NewBg4",
+        "position": [
+          0.0,
+          300.0
+        ],
+        "size": [
+          708.0,
+          478.0
+        ],
+        "slice": [
+          47.0,
+          47.0,
+          44.0,
+          42.0
+        ],
+        "cropTopLeft": [
+          0,
+          0
+        ],
+        "sha256": "8555ce8088164f7323a7fc07e3b340b58288b57acbab15cf9a16905f4a3a6b84"
+      },
+      {
+        "texture": "failure-heart",
+        "sourcePath": "/FailPanel/SafeArea/All_Anim/Revive_Empty/MidBg_Img/Heart_Img",
+        "sourceId": "CAB-c8832cbea2d488313bd7602312fbcbb2:8082235486863820004",
+        "spriteName": "Main_FailPanel_BrokenHeart",
+        "position": [
+          2.0,
+          334.0
+        ],
+        "size": [
+          360.0,
+          300.0
+        ],
+        "slice": null,
+        "cropTopLeft": [
+          10,
+          6
+        ],
+        "sha256": "980f18958a3845c726100cd7ecbcfde1922d0de3d7d3d2dc9f526bd8f15f43a5"
+      }
+    ],
+    "titlePosition": [
+      0.0,
+      648.0
+    ]
+  }
+}

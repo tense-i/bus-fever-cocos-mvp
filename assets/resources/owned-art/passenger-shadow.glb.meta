@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "3925eb1f-585b-4924-9486-fe5e6d905e18",
+  "files": [],
+  "subMetas": {
+    "dfb46": {
+      "importer": "gltf-mesh",
+      "uuid": "3925eb1f-585b-4924-9486-fe5e6d905e18@dfb46",
+      "displayName": "",
+      "id": "dfb46",
+      "name": "Shadow_01_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 2
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "3925eb1f-585b-4924-9486-fe5e6d905e18@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "c1e79": {
+      "importer": "gltf-scene",
+      "uuid": "3925eb1f-585b-4924-9486-fe5e6d905e18@c1e79",
+      "displayName": "",
+      "id": "c1e79",
+      "name": "passenger-shadow.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "3925eb1f-585b-4924-9486-fe5e6d905e18@dfb46"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "3925eb1f-585b-4924-9486-fe5e6d905e18@ea6e2"
+      ],
+      "scenes": [
+        "3925eb1f-585b-4924-9486-fe5e6d905e18@c1e79"
+      ]
+    }
+  }
+}

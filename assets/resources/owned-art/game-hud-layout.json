@@ -1,0 +1,62 @@
+{
+  "level": {
+    "anchor": [
+      0.5,
+      1.0
+    ],
+    "position": [
+      -2.0,
+      -62.199951171875
+    ],
+    "size": [
+      360.0,
+      98.0
+    ]
+  },
+  "replay": {
+    "anchor": [
+      0.0,
+      1.0
+    ],
+    "position": [
+      67.0,
+      -80.0
+    ],
+    "size": [
+      110.0,
+      118.0
+    ]
+  },
+  "arrow": {
+    "position": [
+      0.0,
+      1.6799999475479126,
+      -0.25
+    ],
+    "rotation": [
+      -0.0,
+      1.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "provenance": {
+    "label": "Level 1",
+    "font": "CAB-16e852a5c861d195727b245d594bab88:-7387647046309021584",
+    "atlas": "CAB-16e852a5c861d195727b245d594bab88:7912247329044828395",
+    "fontSize": 56.0,
+    "glyphBounds": [
+      89,
+      25,
+      271,
+      76
+    ],
+    "titleSha256": "864e2f83c1a83afdd0ea5a0e4c7bb268a6f5231d4380fc6b44011070cbc2dd72",
+    "arrowPath": "/bus_normal_4/Whole/Bus_001/Arrow/Arrow_01"
+  }
+}

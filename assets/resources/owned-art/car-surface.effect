@@ -1,0 +1,71 @@
+CCEffect %{
+  techniques:
+  - name: opaque
+    passes:
+    - vert: vehicle-vs:vert
+      frag: vehicle-fs:frag
+      properties:
+        mainTexture: { value: white }
+        surfaceColor: { value: [1, 1, 1, 1] }
+        emissionColor: { value: [0, 0, 0, 1] }
+        diffuse: { value: [0.7, 0.8, 3, 40] }
+        lightDirectionSpecular: { value: [0, 1, 0, 0.15] }
+        lightColor: { value: [1, 1, 1, 1] }
+        indirectSpecular: { value: [0, 0, 0, 1] }
+}%
+
+CCProgram vehicle-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/uniforms/cc-local>
+
+  in vec3 a_position;
+  in vec3 a_normal;
+  in vec2 a_texCoord;
+  out vec2 v_uv;
+  out vec3 v_normal;
+  out vec3 v_worldPosition;
+
+  vec4 vert () {
+    vec4 position = cc_matWorld * vec4(a_position, 1.0);
+    v_uv = a_texCoord;
+    v_normal = mat3(cc_matWorldIT) * a_normal;
+    v_worldPosition = position.xyz;
+    return cc_matProj * cc_matView * position;
+  }
+}%
+
+CCProgram vehicle-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <legacy/output-standard>
+
+  in vec2 v_uv;
+  in vec3 v_normal;
+  in vec3 v_worldPosition;
+  uniform sampler2D mainTexture;
+  uniform VehicleSurface {
+    vec4 surfaceColor;
+    vec4 emissionColor;
+    vec4 diffuse;
+    vec4 lightDirectionSpecular;
+    vec4 lightColor;
+    vec4 indirectSpecular;
+  };
+
+  vec4 frag () {
+    vec3 normal = normalize(v_normal);
+    vec3 light = normalize(lightDirectionSpecular.xyz);
+    float lambert = max(dot(normal, light), 0.0);
+    float wrap = max(mix(lambert, 1.0, diffuse.x), 0.0);
+    float diffuseLight = pow(wrap, diffuse.z) * diffuse.y;
+
+    vec3 viewDirection = normalize(cc_cameraPos.xyz - v_worldPosition);
+    vec3 halfDirection = normalize(viewDirection + light);
+    float specularLight = pow(max(dot(normal, halfDirection), 0.0), diffuse.w) * lightDirectionSpecular.w;
+    vec3 albedo = SRGBToLinear(texture(mainTexture, v_uv).rgb);
+    vec3 color = albedo * (diffuseLight * lightColor.rgb * surfaceColor.rgb + emissionColor.rgb)
+        + vec3(specularLight) + 0.1 * indirectSpecular.rgb;
+    return CCFragOutput(vec4(color, 1.0));
+  }
+}%

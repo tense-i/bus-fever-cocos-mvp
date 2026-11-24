@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "fa1a27a6-7dd3-4845-98d1-a67efd8f2abe",
+  "files": [],
+  "subMetas": {
+    "b388c": {
+      "importer": "gltf-mesh",
+      "uuid": "fa1a27a6-7dd3-4845-98d1-a67efd8f2abe@b388c",
+      "displayName": "",
+      "id": "b388c",
+      "name": "Wheel_001_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 144
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "fa1a27a6-7dd3-4845-98d1-a67efd8f2abe@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "5d820": {
+      "importer": "gltf-scene",
+      "uuid": "fa1a27a6-7dd3-4845-98d1-a67efd8f2abe@5d820",
+      "displayName": "",
+      "id": "5d820",
+      "name": "bus-wheel.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "fa1a27a6-7dd3-4845-98d1-a67efd8f2abe@b388c"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "fa1a27a6-7dd3-4845-98d1-a67efd8f2abe@ea6e2"
+      ],
+      "scenes": [
+        "fa1a27a6-7dd3-4845-98d1-a67efd8f2abe@5d820"
+      ]
+    }
+  }
+}

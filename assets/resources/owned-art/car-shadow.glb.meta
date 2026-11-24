@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "5379e80c-819a-43af-90d4-7d3619244a3d",
+  "files": [],
+  "subMetas": {
+    "e6910": {
+      "importer": "gltf-mesh",
+      "uuid": "5379e80c-819a-43af-90d4-7d3619244a3d@e6910",
+      "displayName": "",
+      "id": "e6910",
+      "name": "Car_FakeShadow_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 2
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "5379e80c-819a-43af-90d4-7d3619244a3d@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "c9559": {
+      "importer": "gltf-scene",
+      "uuid": "5379e80c-819a-43af-90d4-7d3619244a3d@c9559",
+      "displayName": "",
+      "id": "c9559",
+      "name": "car-shadow.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "5379e80c-819a-43af-90d4-7d3619244a3d@e6910"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "5379e80c-819a-43af-90d4-7d3619244a3d@ea6e2"
+      ],
+      "scenes": [
+        "5379e80c-819a-43af-90d4-7d3619244a3d@c9559"
+      ]
+    }
+  }
+}

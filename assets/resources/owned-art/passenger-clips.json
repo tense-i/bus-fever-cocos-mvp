@@ -1,0 +1,14 @@
+{
+  "idle": {
+    "frameStart": 1,
+    "frameCount": 60,
+    "duration": 2.0,
+    "loop": true
+  },
+  "board": {
+    "frameStart": 80,
+    "frameCount": 19,
+    "duration": 0.6000001430511475,
+    "loop": true
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "a64c251d-aa57-491a-9633-89774a4dd422",
+  "files": [],
+  "subMetas": {
+    "4292d": {
+      "importer": "gltf-mesh",
+      "uuid": "a64c251d-aa57-491a-9633-89774a4dd422@4292d",
+      "displayName": "",
+      "id": "4292d",
+      "name": "VIP_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 131
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "a64c251d-aa57-491a-9633-89774a4dd422@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "d234e": {
+      "importer": "gltf-scene",
+      "uuid": "a64c251d-aa57-491a-9633-89774a4dd422@d234e",
+      "displayName": "",
+      "id": "d234e",
+      "name": "parking-vip-mark.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "a64c251d-aa57-491a-9633-89774a4dd422@4292d"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "a64c251d-aa57-491a-9633-89774a4dd422@ea6e2"
+      ],
+      "scenes": [
+        "a64c251d-aa57-491a-9633-89774a4dd422@d234e"
+      ]
+    }
+  }
+}

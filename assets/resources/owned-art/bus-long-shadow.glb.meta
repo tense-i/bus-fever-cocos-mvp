@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "f54e33d0-8e2e-421b-97cd-8ab1dede9adb",
+  "files": [],
+  "subMetas": {
+    "c306a": {
+      "importer": "gltf-mesh",
+      "uuid": "f54e33d0-8e2e-421b-97cd-8ab1dede9adb@c306a",
+      "displayName": "",
+      "id": "c306a",
+      "name": "Bus_FakeShadow_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 2
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "f54e33d0-8e2e-421b-97cd-8ab1dede9adb@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "8ddb1": {
+      "importer": "gltf-scene",
+      "uuid": "f54e33d0-8e2e-421b-97cd-8ab1dede9adb@8ddb1",
+      "displayName": "",
+      "id": "8ddb1",
+      "name": "bus-long-shadow.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "f54e33d0-8e2e-421b-97cd-8ab1dede9adb@c306a"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "f54e33d0-8e2e-421b-97cd-8ab1dede9adb@ea6e2"
+      ],
+      "scenes": [
+        "f54e33d0-8e2e-421b-97cd-8ab1dede9adb@8ddb1"
+      ]
+    }
+  }
+}
