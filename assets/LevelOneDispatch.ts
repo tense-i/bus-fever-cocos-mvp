@@ -9,13 +9,14 @@ interface Bay {
 
 export const levelOneSeats = 40;
 export const levelOneBayCount = 4;
+export const passengerGroupSize = 4;
 
 export class LevelOneDispatch {
     readonly ready: Set<string>;
     readonly bays: (Bay | null)[] = Array.from({ length: levelOneBayCount }, () => null);
     readonly queue: Route[] = [
-        ...this.groups('teal', 60), ...this.groups('amber', 40), ...this.groups('red', 40),
-        ...this.groups('teal', 20), ...this.groups('amber', 40), ...this.groups('red', 40),
+        ...this.groups('teal', 40), ...this.groups('red', 40), ...this.groups('teal', 40),
+        ...this.groups('amber', 40), ...this.groups('red', 40), ...this.groups('amber', 40),
     ];
     readonly totalPassengers = this.queue.length;
     boarded = 0;
@@ -46,12 +47,12 @@ export class LevelOneDispatch {
     }
 
     boardingSlot(route: Route): number {
-        return this.bays.findIndex((bay) => bay?.stage === 'parked' && bay.vehicle.route === route && bay.seatsLeft > bay.reserved);
+        return this.bays.findIndex((bay) => bay?.stage === 'parked' && bay.vehicle.route === route && bay.seatsLeft - bay.reserved >= passengerGroupSize);
     }
 
     reserve(slot: number): void {
-        this.bays[slot]!.reserved++;
-        this.consumed++;
+        this.bays[slot]!.reserved += passengerGroupSize;
+        this.consumed += passengerGroupSize;
     }
 
     board(slot: number): number {

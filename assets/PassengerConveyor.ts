@@ -1,4 +1,5 @@
 import { log, Node, Vec3 } from 'cc';
+import { passengerGroupSize } from './LevelOneDispatch';
 
 type Position = [number, number, number];
 
@@ -12,9 +13,12 @@ export interface ConveyorPaths {
     entry: Position[];
 }
 
-const fillDuration = 4.35;
-const rowWidth = 5;
-const laneSpacing = 0.119;
+const entryTravelTime = 1.35;
+const fillDuration = 4.65;
+const normalSpeed = 0.117;
+const boostedSpeed = 0.221;
+const rowWidth = passengerGroupSize;
+const laneSpacing = 0.13;
 
 export class PassengerConveyor {
     private readonly ring: Vec3[];
@@ -22,9 +26,10 @@ export class PassengerConveyor {
     private readonly merge: number;
     private readonly step: number;
     private readonly entrySpan: number;
-    private readonly finalFront: number;
     private readonly sample = new Vec3();
     private elapsed = 0;
+    private speed = normalSpeed;
+    private boosted = false;
     private front: number;
     private admitted = 0;
     private readonly cells: number[];
@@ -50,13 +55,13 @@ export class PassengerConveyor {
         this.entrySpan = this.length(this.entry) / ringLength;
         this.cells = Array(Math.min(avatarCount, paths.capacity * rowWidth)).fill(-1);
         this.step = 1 / paths.capacity;
-        const exit = this.wrap(paths.exitPercent - this.merge);
-        this.finalFront = exit + 1.06;
         this.front = -this.entrySpan;
     }
 
     reset(riders: readonly Node[]): void {
         this.elapsed = 0;
+        this.boosted = false;
+        this.speed = normalSpeed;
         this.front = -this.entrySpan;
         this.admitted = this.cells.length;
         this.exitCells.length = 0;
@@ -71,8 +76,15 @@ export class PassengerConveyor {
         this.elapsed = Math.min(fillDuration, this.elapsed + dt);
         const previous = this.front;
         const filling = this.elapsed < fillDuration;
-        if (filling) this.front = (this.finalFront + this.entrySpan) * this.elapsed / fillDuration - this.entrySpan;
-        else this.front = Math.max(this.finalFront, previous + dt * 0.115);
+        if (this.elapsed < entryTravelTime) this.front = this.entrySpan * (this.elapsed / entryTravelTime - 1);
+        else if (filling) this.front = (this.elapsed - entryTravelTime) / (fillDuration - entryTravelTime);
+        else {
+            if (previous < 1) this.speed = 1 / (fillDuration - entryTravelTime);
+            const target = this.boosted ? boostedSpeed : normalSpeed;
+            const slew = (target > this.speed ? 0.104 : 0.31) * dt;
+            this.speed += Math.sign(target - this.speed) * Math.min(Math.abs(target - this.speed), slew);
+            this.front = Math.max(1, previous + dt * this.speed);
+        }
         this.exitCells.length = 0;
         for (let cell = 0; cell < this.cells.length; cell++) {
             const lag = this.step * Math.floor(cell / rowWidth);
@@ -93,14 +105,14 @@ export class PassengerConveyor {
             } else {
                 const percent = this.wrap(this.merge + distance);
                 this.place(rider, this.ring, percent, lane, true);
-                if (percent >= this.paths.exitStartPercent && percent <= this.paths.exitEndPercent) this.exitCells.push(cell);
+                if (cell % rowWidth === 0 && percent >= this.paths.exitStartPercent && percent <= this.paths.exitEndPercent) this.exitCells.push(cell);
             }
             setMoving(index, true);
         }
         for (let i = this.admitted; i < riders.length; i++) {
             const distance = Math.min(0, this.front - 1) - this.step * (1 + Math.floor((i - this.admitted) / rowWidth));
             if (distance < -this.entrySpan) continue;
-            const lane = ((i - this.admitted) % rowWidth - 2) * laneSpacing;
+            const lane = ((i - this.admitted) % rowWidth - (rowWidth - 1) / 2) * laneSpacing;
             riders[i].active = true;
             this.place(riders[i], this.entry, 1 + distance / this.entrySpan, lane, true);
             setMoving(i, filling);
@@ -110,7 +122,17 @@ export class PassengerConveyor {
 
     passengerAt(cell: number): number { return this.cells[cell]; }
 
-    release(cell: number): void { this.cells[cell] = -1; }
+    boostForRemainingVehicles(remaining: number): void {
+        if (remaining > 4 || this.boosted) return;
+        this.boosted = true;
+        log(`[OwnedGameplay] belt-boost remaining=${remaining}`);
+    }
+
+    releaseGroup(cell: number): number[] {
+        const members = this.cells.slice(cell, cell + rowWidth);
+        this.cells.fill(-1, cell, cell + rowWidth);
+        return members;
+    }
 
     private length(points: readonly Vec3[]): number {
         return points.slice(1).reduce((sum, point, index) => sum + Vec3.distance(points[index], point), 0);

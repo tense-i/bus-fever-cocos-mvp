@@ -70,23 +70,17 @@ tap_car() {
 capture opening
 sleep 0.92
 capture moving
-wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 1
-rg -F 'vat idle=1+60 move=61+19 board=80+19' "$proof/runtime-current.log"
-capture ready
-tap_car Y1
-tap_car Y2
-tap_car R1
-tap_car R2
-wait_log '"event":"lost"' 1
-capture lost
-adb -s "$serial" shell input tap 539 1414
-wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 2
+wait_log '[OwnedGameplay] first-guide-visible' 1
+capture first-guide
+tap_car B2
+wait_log '[OwnedGameplay] guide-blocked B2' 1
+if rg -qF '"event":"dispatch"' "$proof/runtime-current.log"; then exit 2; fi
 tap_car B1
 sleep 0.26
 capture enter-motion
 wait_log 'boarded B1 count=2 remaining=38' 1
 tap_car Y1
-wait_log '"event":"parked","vehicle":"Y1"' 2
+wait_log '"event":"parked","vehicle":"Y1"' 1
 sleep 0.20
 capture concurrent-parking
 wait_log '"event":"departed","vehicle":"B1"' 1
@@ -111,6 +105,17 @@ adb -s "$serial" shell 'input tap 543 1691; input tap 543 1691'
 wait_log '[OwnedGameplay] victory-reward {"amount":20,"balance":120}' 1
 capture reward
 adb -s "$serial" shell input tap 543 1691
+wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 2
+capture ready
+# Send the four mismatched vehicles as the blue group approaches the exit.
+sleep 2
+tap_car Y1
+tap_car Y2
+tap_car R1
+tap_car R2
+wait_log '"event":"lost"' 1
+capture lost
+adb -s "$serial" shell input tap 539 1414
 wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 3
 tap_car B1
 sleep 0.14
@@ -144,6 +149,7 @@ jq -se '
   ((map(select(.event=="enter" or .event=="restart")|del(.event))|unique|length)==1) and
   (map(select(.event=="restart"))|length==3)
 ' "$proof/e2e.ndjson" > "$proof/assertion.txt"
+test "$(rg -cF '[OwnedGameplay] belt-boost remaining=4' "$proof/e2e-runtime.log")" = 1
 test "$(rg -cF '[OwnedGameplay] victory-reward' "$proof/e2e-runtime.log")" = 1
 test "$(rg -c 'vehicle-motion [BRY][12] exit smoke=[1-9][0-9]*' "$proof/e2e-runtime.log")" = 6
 test "$(rg -c 'vehicle-motion [BRY][12] enter smoke=[1-9][0-9]*' "$proof/e2e-runtime.log")" = 11
@@ -173,7 +179,7 @@ for line in Path(sys.argv[1]).read_text().splitlines():
 assert set(counts)==set("B1 B2 Y1 Y2 R1 R2".split())
 assert all(seq==list(range(39,-1,-1)) for seq in counts.values())
 assert starts==240 and in_flight==0 and peak>1
-assert refilled==list(range(195,240))
+assert refilled==list(range(156,240))
 Path(sys.argv[2]).write_text(json.dumps({"boardings":starts,"peakInTransit":peak,"countsByVehicle":{bus:len(seq) for bus,seq in counts.items()}},indent=2)+"\n")
 PY
 cat "$proof/assertion.txt" "$proof/individual-boarding.json" "$proof/pause-assertion.txt"

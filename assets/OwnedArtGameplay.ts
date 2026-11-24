@@ -1,6 +1,6 @@
 import {
     _decorator, BufferAsset, Camera, Canvas, Color, Component, DirectionalLight, EffectAsset, EventTouch,
-    geometry, input, Input, instantiate, isValid, JsonAsset, Label, Layers, log, Material,
+    geometry, gfx, input, Input, instantiate, isValid, JsonAsset, Label, Layers, log, Material,
     Mesh, MeshRenderer, Node, Prefab, profiler, Quat, Sprite, SpriteFrame, Texture2D,
     Tween, tween, UITransform, utils, Vec3, Vec4, view,
 } from 'cc';
@@ -88,7 +88,9 @@ const seatBadgePose: Pose = {
     rotation: [0.140974447, 0.184593737, -0.026764831, 0.972283423],
     scale: [1, 1, 1],
 };
-const boardingInterval = 0.05;
+const passengerInterval = 0.03;
+const groupInterval = 0.04;
+const guideStart = 1.2;
 
 interface ParkingBay {
     position: Vec3;
@@ -119,7 +121,7 @@ export class OwnedArtGameplay extends Component {
     private boardDuration = 0;
     private vehicleBoardClip!: VehicleBoardClip;
     private vehicleBoarding?: { model: Node; elapsed: number };
-    private vehicleModels = new Map<string, { bodyAndWheels: Node; arrow: Node }>();
+    private vehicleModels = new Map<string, { bodyAndWheels: Node; arrow: Node; outline: Node }>();
     private materials: Material[] = [];
     private cars = new Map<string, Node>();
     private riders: Node[] = [];
@@ -134,7 +136,9 @@ export class OwnedArtGameplay extends Component {
     private guideHand?: Node;
     private guideCircle?: Node;
     private guideCaption?: Label;
+    private guideCard?: Node;
     private guideClock = 0;
+    private tutorialComplete = false;
     private propNodes: Node[] = [];
     private conveyorMesh?: Mesh;
     private ready = false;
@@ -175,7 +179,7 @@ export class OwnedArtGameplay extends Component {
         }
         this.idle?.advance(dt);
         this.moving?.advance(dt);
-        if (this.ready && this.introReady && !this.resultShown) {
+        if (this.ready && this.guideClock >= guideStart && !this.resultShown) {
             this.boardingWait = Math.max(0, this.boardingWait - dt);
             if (this.round.boarded < this.round.consumed) this.boarding?.advance(dt);
             this.playAvailableBoarding();
@@ -245,6 +249,7 @@ export class OwnedArtGameplay extends Component {
                     loadOwnedArt('pause-icon/texture', Texture2D), loadOwnedArt('locked-prop-button/texture', Texture2D),
                     loadOwnedArt('locked-prop-padlock/texture', Texture2D),
                     loadOwnedArt('locked-prop-body/texture', Texture2D),
+                    loadOwnedArt('tutorial-panel/texture', Texture2D),
                 ]),
                 loadOwnedModel('bay-seat-badge'), loadOwnedArt('bay-seat-badge-map/texture', Texture2D),
                 loadOwnedArt('vehicle-smoke/texture', Texture2D),
@@ -286,7 +291,11 @@ export class OwnedArtGameplay extends Component {
             amber: originalPassengerMaterial(passengerEffect, passengerSurfaces, passengerSurfaces.routes.amber),
             red: originalPassengerMaterial(passengerEffect, passengerSurfaces, passengerSurfaces.routes.red),
         };
+        const highlight = new Material();
+        highlight.initialize({ effectName: 'builtin-unlit', states: { rasterizerState: { cullMode: gfx.CullMode.FRONT } } });
+        highlight.setProperty('mainColor', new Color(255, 228, 0));
         this.materials = [
+            highlight,
             ...Object.values(busMaterials), pavementMaterial, backdropMaterial, roadMaterial, vipMaterial,
             arrowMaterial, ...Object.values(riderMaterials), carShadowMaterial, passengerShadowMaterial,
             ...Object.values(this.seatMaterials),
@@ -305,7 +314,10 @@ export class OwnedArtGameplay extends Component {
             this.model(wheel, bodyAndWheels, busMaterials[vehicle.route]);
             const arrowNode = this.model(arrow, bodyNode, arrowMaterial);
             originalPose(arrowNode, arrowPose);
-            this.vehicleModels.set(vehicle.id, { bodyAndWheels, arrow: arrowNode });
+            const outline = this.model(body, bodyAndWheels, highlight);
+            outline.setScale(1.13, 1.08, 1.07);
+            outline.active = false;
+            this.vehicleModels.set(vehicle.id, { bodyAndWheels, arrow: arrowNode, outline });
             const shadow = this.model(carShadow, car, carShadowMaterial);
             this.model(carShadow, shadow, carShadowMaterial);
             this.cars.set(vehicle.id, car);
@@ -317,7 +329,6 @@ export class OwnedArtGameplay extends Component {
             const pose = new Node('Passenger pose');
             pose.parent = rider;
             originalPose(pose, shadows.passengerRoot);
-            pose.setScale(pose.scale.clone().multiplyScalar(0.83));
             const body = this.model(passenger, pose, material);
             // The indexed VAT GLB reflects Z. Other prefab meshes reflect X.
             body.setRotationFromEuler(0, 180, 0);
@@ -471,7 +482,7 @@ export class OwnedArtGameplay extends Component {
     }
 
     private onTouch(event: EventTouch): void {
-        if (!this.ready || !this.introReady || this.paused || this.round.outcome !== 'playing') return;
+        if (!this.ready || this.guideClock < guideStart || this.paused || this.round.outcome !== 'playing') return;
         const { x, y } = event.getLocation();
         const ray = this.camera.screenPointToRay(x, y);
         let best: Vehicle | undefined;
@@ -494,6 +505,10 @@ export class OwnedArtGameplay extends Component {
     }
 
     private dispatch(vehicle: Vehicle): void {
+        if (!this.tutorialComplete && this.nextGuideVehicle()?.id !== vehicle.id) {
+            log('[OwnedGameplay] guide-blocked ' + vehicle.id);
+            return;
+        }
         const slot = this.round.dispatch(vehicle);
         if (slot < 0) return;
         const car = this.cars.get(vehicle.id)!;
@@ -520,6 +535,7 @@ export class OwnedArtGameplay extends Component {
         if (cell === undefined || this.round.outcome !== 'playing') {
             const outcome = this.round.outcome;
             if (outcome !== 'playing') {
+                if (outcome === 'won') this.tutorialComplete = true;
                 this.resultShown = true;
                 this.renderStatus();
                 this.report(outcome);
@@ -528,10 +544,14 @@ export class OwnedArtGameplay extends Component {
         }
         const index = belt.passengerAt(cell);
         const slot = this.round.boardingSlot(this.round.queue[index]);
-        const { vehicle } = this.round.bays[slot]!;
-        belt.release(cell);
+        const members = belt.releaseGroup(cell);
         this.round.reserve(slot);
-        this.boardingWait = boardingInterval;
+        this.boardingWait = (members.length - 1) * passengerInterval + groupInterval;
+        const { vehicle } = this.round.bays[slot]!;
+        members.forEach((member, order) => this.movePassengerToSeat(member, slot, vehicle, order * passengerInterval));
+    }
+
+    private movePassengerToSeat(index: number, slot: number, vehicle: Vehicle, delay: number): void {
         const rider = this.riders[index];
         const renderer = this.riderRenderers[index];
         renderer.mesh = this.boarding!.mesh;
@@ -541,7 +561,7 @@ export class OwnedArtGameplay extends Component {
         const destination = car.position.clone().add3f(0, 0.085, 0);
         rider.setRotationFromEuler(0,
             Math.atan2(destination.x - rider.position.x, destination.z - rider.position.z) * 180 / Math.PI, 0);
-        tween(rider).to(this.boardDuration, { position: destination }, { easing: 'quadInOut' }).call(() => {
+        tween(rider).delay(delay).to(this.boardDuration, { position: destination }, { easing: 'quadInOut' }).call(() => {
             renderer.mesh = this.idle!.mesh;
             rider.active = false;
             const model = this.vehicleModels.get(vehicle.id)!.bodyAndWheels;
@@ -557,6 +577,8 @@ export class OwnedArtGameplay extends Component {
     }
 
     private depart(slot: number, vehicleId: string, car: Node): void {
+        const stillInPlay = this.round.ready.size + this.round.bays.filter(bay => bay && bay.stage !== 'leaving').length;
+        this.conveyor!.boostForRemainingVehicles(stillInPlay);
         this.vehicleDrive!.exit(car, () => {
             car.active = false;
             this.round.depart(slot);
@@ -605,7 +627,7 @@ export class OwnedArtGameplay extends Component {
 
     private createOnboardingHud(
         hand: Texture2D, circle: Texture2D, pause: Texture2D, propButton: Texture2D, padlock: Texture2D,
-        lockBody: Texture2D,
+        lockBody: Texture2D, tutorialPanel: Texture2D,
     ): void {
         this.pauseNode = this.makeImage('Original pause icon', pause);
         this.positionHud(this.pauseNode, { anchor: [1, 1], position: [-67, -80], size: [110, 118] });
@@ -631,17 +653,34 @@ export class OwnedArtGameplay extends Component {
         this.guideCircle = this.makeImage('Tap marker', circle);
         this.guideHand = this.makeImage('Original tutorial hand', hand);
         this.positionHud(this.guideCircle, { anchor: [0.5, 0.5], position: [0, 0], size: [102, 102] });
-        this.positionHud(this.guideHand, { anchor: [0.5, 0.5], position: [0, 0], size: [188, 194] });
-        this.guideCaption = this.label('Tap a matching car', 110, 24);
+        this.positionHud(this.guideHand, { anchor: [0.5, 0.5], position: [0, 0], size: [420, 433] });
+        this.guideCard = this.makeImage('Original first-dispatch tutorial', tutorialPanel);
+        const panel = this.guideCard.getComponent(Sprite)!;
+        const frame = panel.spriteFrame!;
+        [frame.insetLeft, frame.insetBottom, frame.insetRight, frame.insetTop] = [63, 66, 61, 55];
+        panel.type = Sprite.Type.SLICED;
+        this.positionHud(this.guideCard, { anchor: [0.5, 0.22], position: [0, 0], size: [970, 225] });
+        this.guideCaption = this.label('Tap the vehicle to\nmatch the passengers', 0, 50);
+        this.guideCaption.color = new Color(113, 72, 31);
+        this.guideCaption.isBold = true;
+        this.guideCaption.overflow = Label.Overflow.SHRINK;
+        this.positionHud(this.guideCaption.node, { anchor: [0.5, 0.22], position: [0, 7], size: [870, 175] });
+    }
+
+    private nextGuideVehicle(): Vehicle | undefined {
+        return fleet.find((vehicle) => this.round.ready.has(vehicle.id));
     }
 
     private updateGuide(dt: number): void {
         this.guideClock += dt;
-        const next = fleet.find((vehicle) => this.round.ready.has(vehicle.id));
-        const show = this.introReady && !this.paused && this.round.outcome === 'playing' && !!next;
+        const next = this.nextGuideVehicle();
+        const show = !this.tutorialComplete && this.guideClock >= guideStart && !this.paused && this.round.outcome === 'playing' && !!next;
+        this.vehicleModels.forEach(({ outline }, id) => { outline.active = show && id === next?.id; });
         this.guideHand!.active = show;
         this.guideCircle!.active = show;
         this.guideCaption!.node.active = show && this.round.ready.size === fleet.length;
+        if (!this.guideCard!.active && this.guideCaption!.node.active) log('[OwnedGameplay] first-guide-visible');
+        this.guideCard!.active = this.guideCaption!.node.active;
         if (!show || !next) return;
         const camera = this.camera;
         const point = camera.worldToScreen(this.cars.get(next.id)!.worldPosition.clone().add3f(0, 0.14, 0));
@@ -652,7 +691,7 @@ export class OwnedArtGameplay extends Component {
         const pulse = Math.sin(this.guideClock * 7);
         this.guideCircle!.setPosition(x * factor, y * factor, 0);
         this.guideCircle!.setScale(1 + pulse * 0.13, 1 + pulse * 0.13, 1);
-        this.guideHand!.setPosition((x + 56 + pulse * 7) * factor, (y - 68 - pulse * 7) * factor, 0);
+        this.guideHand!.setPosition((x + 125 + pulse * 10) * factor, (y - 152 - pulse * 10) * factor, 0);
     }
 
     private togglePause(): void {
