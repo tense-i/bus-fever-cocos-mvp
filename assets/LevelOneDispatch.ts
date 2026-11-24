@@ -4,6 +4,8 @@ interface Bay {
     vehicle: Vehicle;
     seatsLeft: number;
     reserved: number;
+    waitingGroups: number[][];
+    nextGroupAt: number;
     stage: 'entering' | 'parked' | 'leaving';
 }
 
@@ -37,7 +39,7 @@ export class LevelOneDispatch {
     dispatch(vehicle: Vehicle): number {
         const slot = this.bays.indexOf(null);
         if (slot < 0 || this.outcome !== 'playing' || !this.ready.delete(vehicle.id)) return -1;
-        this.bays[slot] = { vehicle, seatsLeft: levelOneSeats, reserved: 0, stage: 'entering' };
+        this.bays[slot] = { vehicle, seatsLeft: levelOneSeats, reserved: 0, stage: 'entering', waitingGroups: [], nextGroupAt: 0 };
         return slot;
     }
 
@@ -48,12 +50,19 @@ export class LevelOneDispatch {
     }
 
     boardingSlot(route: Route): number {
-        return this.bays.findIndex((bay) => bay?.stage === 'parked' && bay.vehicle.route === route && bay.seatsLeft - bay.reserved >= passengerGroupSize);
+        return this.bays.findIndex((_, index) => this.canReserve(index, route));
     }
 
-    reserve(slot: number): void {
-        this.bays[slot]!.reserved += passengerGroupSize;
-        this.consumed += passengerGroupSize;
+    canReserve(slot: number, route: Route): boolean {
+        const bay = this.bays[slot];
+        return bay?.stage === 'parked' && bay.vehicle.route === route && bay.seatsLeft - bay.reserved >= passengerGroupSize;
+    }
+
+    reserve(slot: number, members: number[]): void {
+        const bay = this.bays[slot]!;
+        bay.reserved += members.length;
+        this.consumed += members.length;
+        bay.waitingGroups.push(members);
     }
 
     board(slot: number): number {

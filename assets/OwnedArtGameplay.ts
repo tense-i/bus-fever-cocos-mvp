@@ -116,7 +116,7 @@ export class OwnedArtGameplay extends Component {
     private idle?: OwnedPassengerPlayback;
     private moving?: OwnedPassengerPlayback;
     private boarding?: OwnedPassengerPlayback;
-    private boardingWait = 0;
+    private boardingClock = 0;
     private resultShown = false;
     private boardDuration = 0;
     private vehicleBoardClip!: VehicleBoardClip;
@@ -180,7 +180,7 @@ export class OwnedArtGameplay extends Component {
         this.idle?.advance(dt);
         this.moving?.advance(dt);
         if (this.ready && this.guideClock >= guideStart && !this.resultShown) {
-            this.boardingWait = Math.max(0, this.boardingWait - dt);
+            this.boardingClock += dt;
             if (this.round.boarded < this.round.consumed) this.boarding?.advance(dt);
             this.playAvailableBoarding();
         }
@@ -519,6 +519,14 @@ export class OwnedArtGameplay extends Component {
             this.vehicleModels.get(vehicle.id)!.arrow.active = false;
             const belt = this.conveyor!;
             this.round.park(slot, belt.exitCells.map(cell => this.round.queue[belt.passengerAt(cell)]).filter(Boolean));
+            const arrivalCells = [...belt.exitCells].sort((a, b) => belt.distanceToExitEnd(a) - belt.distanceToExitEnd(b));
+            for (const cell of arrivalCells) {
+                const rider = belt.passengerAt(cell);
+                if (rider >= 0 && this.round.canReserve(slot, this.round.queue[rider])) {
+                    this.round.reserve(slot, belt.releaseGroup(cell));
+                    log(`[OwnedGameplay] arrival-reservation ${vehicle.id} rider=${rider} slot=${slot}`);
+                }
+            }
             this.setSeatBadge(slot, vehicle.route, levelOneSeats);
             this.report('parked', vehicle.id);
             this.playAvailableBoarding();
@@ -526,29 +534,34 @@ export class OwnedArtGameplay extends Component {
     }
 
     private playAvailableBoarding(): void {
-        if (this.resultShown || this.boardingWait > 0) return;
+        if (this.resultShown) return;
         const belt = this.conveyor!;
-        const cell = belt.exitCells.find(cell => {
-            const index = belt.passengerAt(cell);
-            return index >= 0 && this.round.boardingSlot(this.round.queue[index]) >= 0;
-        });
-        if (cell === undefined || this.round.outcome !== 'playing') {
-            const outcome = this.round.outcome;
-            if (outcome !== 'playing') {
-                if (outcome === 'won') this.tutorialComplete = true;
-                this.resultShown = true;
-                this.renderStatus();
-                this.report(outcome);
-            }
+        const outcome = this.round.outcome;
+        if (outcome !== 'playing') {
+            if (outcome === 'won') this.tutorialComplete = true;
+            this.resultShown = true;
+            this.renderStatus();
+            this.report(outcome);
             return;
         }
-        const index = belt.passengerAt(cell);
-        const slot = this.round.boardingSlot(this.round.queue[index]);
-        const members = belt.releaseGroup(cell);
-        this.round.reserve(slot);
-        this.boardingWait = (members.length - 1) * passengerInterval + groupInterval;
-        const { vehicle } = this.round.bays[slot]!;
-        members.forEach((member, order) => this.movePassengerToSeat(member, slot, vehicle, order * passengerInterval));
+        for (const cell of belt.exitCells) {
+            const rider = belt.passengerAt(cell);
+            if (rider < 0) continue;
+            const route = this.round.queue[rider];
+            const slot = this.round.boardingSlot(route);
+            if (slot >= 0) {
+                if (this.round.bays.some((_, later) => later > slot && this.round.canReserve(later, route))) {
+                    log(`[OwnedGameplay] same-color-choice ${this.round.bays[slot]!.vehicle.id} slot=${slot}`);
+                }
+                this.round.reserve(slot, belt.releaseGroup(cell));
+            }
+        }
+        this.round.bays.forEach((bay, slot) => {
+            if (!bay || !bay.waitingGroups.length || this.boardingClock < bay.nextGroupAt) return;
+            const members = bay.waitingGroups.shift()!;
+            bay.nextGroupAt = this.boardingClock + (members.length - 1) * passengerInterval + groupInterval;
+            members.forEach((member, order) => this.movePassengerToSeat(member, slot, bay.vehicle, order * passengerInterval));
+        });
     }
 
     private movePassengerToSeat(index: number, slot: number, vehicle: Vehicle, delay: number): void {
@@ -598,7 +611,7 @@ export class OwnedArtGameplay extends Component {
         this.introReady = false;
         this.guideClock = 0;
         this.vehicleBoarding = undefined;
-        this.boardingWait = 0;
+        this.boardingClock = 0;
         this.resultShown = false;
         this.boarding?.reset();
         this.idle?.reset();

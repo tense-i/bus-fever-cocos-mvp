@@ -122,6 +122,11 @@ export class PassengerConveyor {
 
     passengerAt(cell: number): number { return this.cells[cell]; }
 
+    distanceToExitEnd(cell: number): number {
+        const percent = this.merge + this.front - this.step * Math.floor(cell / rowWidth);
+        return this.wrap(this.paths.exitEndPercent - percent);
+    }
+
     boostForRemainingVehicles(remaining: number): void {
         if (remaining > 4 || this.boosted) return;
         this.boosted = true;
