@@ -1,0 +1,70 @@
+CCEffect %{
+  techniques:
+  - name: stylized
+    passes:
+    - vert: passenger-vs:vert
+      frag: passenger-fs:frag
+      properties:
+        baseColor: { value: [1, 1, 1, 1] }
+        shade: { value: [0, 0.826, 0.85, 0.2] }
+        shadeOffset: { value: [0, 0, 0, 0] }
+        specular: { value: [0.326, 0.737, 1, 0] }
+        specularColor: { value: [0.667, 0.667, 0.667, 0] }
+        enabled: { value: [1, 1, 0, 0] }
+        lightDirection: { value: [0, 1, 0, 0] }
+        lightColor: { value: [1, 1, 1, 1] }
+}%
+
+CCProgram passenger-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/uniforms/cc-local>
+
+  in vec3 a_position;
+  in vec3 a_normal;
+  out vec3 v_normal;
+  out vec3 v_world;
+
+  vec4 vert () {
+    vec4 world = cc_matWorld * vec4(a_position, 1.0);
+    v_world = world.xyz;
+    v_normal = normalize(mat3(cc_matWorldIT) * a_normal);
+    return cc_matProj * cc_matView * world;
+  }
+}%
+
+CCProgram passenger-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <common/color/gamma>
+
+  in vec3 v_normal;
+  in vec3 v_world;
+  uniform PassengerSurface {
+    vec4 baseColor;
+    vec4 shade;
+    vec4 shadeOffset;
+    vec4 specular;
+    vec4 specularColor;
+    vec4 enabled;
+    vec4 lightDirection;
+    vec4 lightColor;
+  };
+
+  vec4 frag () {
+    vec3 base = SRGBToLinear(baseColor.rgb);
+    vec3 light = normalize(lightDirection.xyz);
+    float facing = clamp(dot(light, v_normal), 0.0, 1.0);
+    float lit = smoothstep(shade.x, shade.x + max(shade.y, 0.001), facing);
+    lit = mix(1.0, lit, enabled.x) * max(lightColor.r, max(lightColor.g, lightColor.b));
+    vec3 lowLight = mix(base, vec3(1.0), shade.w) * shade.z - SRGBToLinear(shadeOffset.rgb);
+    vec3 diffuse = mix(lowLight, vec3(1.0), lit) * base * lightColor.rgb;
+
+    vec3 halfway = normalize(normalize(cc_cameraPos.xyz - v_world) + light);
+    float specFacing = clamp(dot(normalize(v_normal), halfway), 0.0, 1.0);
+    float gloss = smoothstep(1.0 - specular.x, 1.0 - specular.x + max(specular.y, 0.001), specFacing);
+    vec3 shine = mix(SRGBToLinear(specularColor.rgb), lightColor.rgb * specular.z, specular.w);
+    vec3 color = diffuse + shine * (0.5 * enabled.y * lit * gloss);
+    return vec4(LinearToSRGB(clamp(color, 0.0, 1.0)), 1.0);
+  }
+}%

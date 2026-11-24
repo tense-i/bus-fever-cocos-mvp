@@ -1,0 +1,67 @@
+CCEffect %{
+  techniques:
+  - name: backdrop
+    passes:
+    - vert: stage-art-vs:vert
+      frag: stage-art-fs:frag
+      properties:
+        mainTexture: { value: white }
+    - vert: stage-art-vs:vert
+      frag: stage-art-fs:frag
+      phase: deferred-forward
+      propertyIndex: 0
+  - name: conveyor
+    passes:
+    - vert: stage-art-vs:vert
+      frag: stage-art-fs:frag
+      rasterizerState: &double-sided
+        cullMode: none
+      depthStencilState: &transparent-depth
+        depthTest: true
+        depthWrite: false
+      blendState: &alpha-blend
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      properties:
+        mainTexture: { value: white }
+    - vert: stage-art-vs:vert
+      frag: stage-art-fs:frag
+      phase: deferred-forward
+      propertyIndex: 0
+      rasterizerState: *double-sided
+      depthStencilState: *transparent-depth
+      blendState: *alpha-blend
+}%
+
+CCProgram stage-art-vs %{
+  precision highp float;
+  #include <legacy/input>
+  #include <legacy/decode-base>
+  #include <legacy/local-batch>
+  #include <builtin/uniforms/cc-global>
+
+  out vec2 v_uv;
+
+  vec4 vert () {
+    vec4 position;
+    CCVertInput(position);
+    mat4 matWorld;
+    CCGetWorldMatrix(matWorld);
+    v_uv = a_texCoord;
+    return cc_matProj * (cc_matView * matWorld) * position;
+  }
+}%
+
+CCProgram stage-art-fs %{
+  precision highp float;
+  in vec2 v_uv;
+  uniform sampler2D mainTexture;
+
+  vec4 frag () {
+    // These stage images supply display-referred colors, as in the Unity unlit backdrop.
+    return texture(mainTexture, v_uv);
+  }
+}%

@@ -13,7 +13,25 @@ export interface PassengerClip {
 
 export interface PassengerClips {
     idle: PassengerClip;
+    move: PassengerClip;
     board: PassengerClip;
+}
+
+type SurfaceValues = [number, number, number, number];
+
+interface PassengerSurface {
+    baseColor: SurfaceValues;
+    shade: SurfaceValues;
+    shadeOffset: SurfaceValues;
+    specular: SurfaceValues;
+    specularColor: SurfaceValues;
+    enabled: SurfaceValues;
+}
+
+export interface PassengerSurfaceParameters {
+    lightDirection: [number, number, number];
+    lightColor: SurfaceValues;
+    routes: Record<'teal' | 'amber' | 'red', PassengerSurface>;
 }
 
 interface CarSurface {
@@ -60,6 +78,13 @@ export function originalTextureMaterial(texture: Texture2D, transparent = false)
     return material;
 }
 
+export function originalStageMaterial(effect: EffectAsset, texture: Texture2D, alpha = false): Material {
+    const material = new Material();
+    material.initialize({ effectAsset: effect, technique: alpha ? 1 : 0 });
+    material.setProperty('mainTexture', texture);
+    return material;
+}
+
 export function originalCarMaterial(
     effect: EffectAsset, texture: Texture2D, settings: CarSurfaceParameters, surface: CarSurface,
 ): Material {
@@ -80,6 +105,22 @@ export function passengerMaterial(color: Color): Material {
     material.initialize({ effectName: 'builtin-standard' });
     material.setProperty('mainColor', color);
     material.setProperty('roughness', 0.85);
+    return material;
+}
+
+export function originalPassengerMaterial(
+    effect: EffectAsset, settings: PassengerSurfaceParameters, surface: PassengerSurface,
+): Material {
+    const material = new Material();
+    material.initialize({ effectAsset: effect });
+    material.setProperty('baseColor', new Vec4(...surface.baseColor));
+    material.setProperty('shade', new Vec4(...surface.shade));
+    material.setProperty('shadeOffset', new Vec4(...surface.shadeOffset));
+    material.setProperty('specular', new Vec4(...surface.specular));
+    material.setProperty('specularColor', new Vec4(...surface.specularColor));
+    material.setProperty('enabled', new Vec4(...surface.enabled));
+    material.setProperty('lightDirection', new Vec4(...settings.lightDirection, 0));
+    material.setProperty('lightColor', new Vec4(...settings.lightColor));
     return material;
 }
 

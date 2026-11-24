@@ -7,14 +7,19 @@ import {
 import type { Route, Vehicle } from './DispatchRound';
 import { LevelOneDispatch, levelOneBayCount, levelOneSeats } from './LevelOneDispatch';
 import {
-    CarSurfaceParameters, loadOwnedArt, loadOwnedModel, originalCarMaterial, originalTextureMaterial,
-    OwnedPassengerPlayback, OwnedPassengerVat, passengerMaterial, PassengerClips,
+    CarSurfaceParameters, loadOwnedArt, loadOwnedModel, originalCarMaterial, originalPassengerMaterial,
+    originalStageMaterial, originalTextureMaterial, OwnedPassengerPlayback, OwnedPassengerVat, PassengerClips,
+    PassengerSurfaceParameters,
 } from './OwnedArtAssets';
 import { loadResultArt, OwnedResultPanels } from './OwnedResultPanels';
 import { ConveyorPaths, PassengerConveyor } from './PassengerConveyor';
 import { VehicleDrive } from './VehicleDrive';
 
 const { ccclass } = _decorator;
+const stageFov = 4.7;
+// Framing measured against the 480-line Level 1 reference after centering its portrait crop.
+const referenceHeight = 480;
+const referenceOffset = { x: 1, y: 17 };
 
 interface Pose {
     position: [number, number, number];
@@ -81,7 +86,7 @@ const seatBadgePose: Pose = {
     rotation: [0.140974447, 0.184593737, -0.026764831, 0.972283423],
     scale: [1, 1, 1],
 };
-const boardingTravel = 0.14;
+const boardingInterval = 0.05;
 
 interface ParkingBay {
     position: Vec3;
@@ -105,8 +110,10 @@ export class OwnedArtGameplay extends Component {
     private ground!: Node;
     private camera!: Camera;
     private idle?: OwnedPassengerPlayback;
+    private moving?: OwnedPassengerPlayback;
     private boarding?: OwnedPassengerPlayback;
-    private boardingRenderer?: MeshRenderer;
+    private boardingWait = 0;
+    private resultShown = false;
     private boardDuration = 0;
     private vehicleBoardClip!: VehicleBoardClip;
     private vehicleBoarding?: { model: Node; elapsed: number };
@@ -155,7 +162,9 @@ export class OwnedArtGameplay extends Component {
         if (this.paused) return;
         this.vehicleDrive?.update(dt);
         if (this.ready && this.conveyor) {
-            const settled = this.conveyor.update(dt, this.riders, this.round.consumed, !!this.boardingRenderer);
+            const settled = this.conveyor.update(
+                dt, this.riders, this.round.consumed, this.setConveyorMotion,
+            );
             if (settled && !this.introReady) {
                 this.introReady = true;
                 log(`[OwnedGameplay] passengers-in-ring ${this.round.totalPassengers} avatars=${this.riders.length}`);
@@ -163,7 +172,12 @@ export class OwnedArtGameplay extends Component {
             this.updateGuide(dt);
         }
         this.idle?.advance(dt);
-        if (this.boardingRenderer) this.boarding?.advance(dt * this.boardDuration / boardingTravel);
+        this.moving?.advance(dt);
+        if (this.ready && this.introReady && !this.resultShown) {
+            this.boardingWait = Math.max(0, this.boardingWait - dt);
+            if (this.round.boarded < this.round.consumed) this.boarding?.advance(dt);
+            this.playAvailableBoarding();
+        }
         const boarding = this.vehicleBoarding;
         if (!boarding) return;
         boarding.elapsed += dt;
@@ -187,6 +201,7 @@ export class OwnedArtGameplay extends Component {
         this.resultPanels?.destroy();
         this.root.destroy();
         this.idle?.mesh.destroy();
+        this.moving?.mesh.destroy();
         this.boarding?.mesh.destroy();
         this.conveyorMesh?.destroy();
         this.materials.forEach((material) => material.destroy());
@@ -196,7 +211,8 @@ export class OwnedArtGameplay extends Component {
         const [
             body, wheel, passenger, background, parking, vat, blue, yellow, red, backdropMap, parkingMap, replay,
             layout, clipData, carEffect, surfaceData, resultArt, level, hudData, arrow,
-            shadowAssets, vehicleBoardClip, levelOneAssets, onboardingArt, badge, badgeMap, vehicleSmoke,
+            shadowAssets, vehicleBoardClip, levelOneAssets, onboardingArt, badge, badgeMap, vehicleSmoke, stageEffect,
+            passengerEffect, passengerData,
         ] =
             await Promise.all([
                 loadOwnedModel('bus-long-body'), loadOwnedModel('bus-long-wheel'),
@@ -230,6 +246,9 @@ export class OwnedArtGameplay extends Component {
                 ]),
                 loadOwnedModel('bay-seat-badge'), loadOwnedArt('bay-seat-badge-map/texture', Texture2D),
                 loadOwnedArt('vehicle-smoke/texture', Texture2D),
+                loadOwnedArt('stage-art', EffectAsset),
+                loadOwnedArt('passenger-surface', EffectAsset),
+                loadOwnedArt('passenger-surface-parameters', JsonAsset),
             ]);
         if (!isValid(this, true)) return;
         const [carShadow, passengerShadow, carShadowMap, passengerShadowMap, shadowData] = shadowAssets;
@@ -248,8 +267,8 @@ export class OwnedArtGameplay extends Component {
             red: originalCarMaterial(carEffect, red, surfaces, surfaces.red),
         };
         const pavementMaterial = originalTextureMaterial(parkingMap);
-        const backdropMaterial = originalTextureMaterial(backdropMap);
-        const roadMaterial = originalTextureMaterial(road, true);
+        const backdropMaterial = originalStageMaterial(stageEffect, backdropMap);
+        const roadMaterial = originalStageMaterial(stageEffect, road, true);
         const vipMaterial = originalTextureMaterial(vipMap);
         const arrowMaterial = originalTextureMaterial(blue, true);
         const carShadowMaterial = this.shadowMaterial(carShadowMap, 0.8);
@@ -259,10 +278,11 @@ export class OwnedArtGameplay extends Component {
             amber: this.badgeMaterial(badgeMap, new Vec4(0.96, 0.67, 0.14, 1)),
             red: this.badgeMaterial(badgeMap, new Vec4(0.93, 0.20, 0.28, 1)),
         };
+        const passengerSurfaces = passengerData.json as unknown as PassengerSurfaceParameters;
         const riderMaterials = {
-            teal: passengerMaterial(new Color(66, 170, 213)),
-            amber: passengerMaterial(new Color(255, 205, 32)),
-            red: passengerMaterial(new Color(230, 52, 64)),
+            teal: originalPassengerMaterial(passengerEffect, passengerSurfaces, passengerSurfaces.routes.teal),
+            amber: originalPassengerMaterial(passengerEffect, passengerSurfaces, passengerSurfaces.routes.amber),
+            red: originalPassengerMaterial(passengerEffect, passengerSurfaces, passengerSurfaces.routes.red),
         };
         this.materials = [
             ...Object.values(busMaterials), pavementMaterial, backdropMaterial, roadMaterial, vipMaterial,
@@ -288,20 +308,23 @@ export class OwnedArtGameplay extends Component {
             this.model(carShadow, shadow, carShadowMaterial);
             this.cars.set(vehicle.id, car);
         });
-        this.riders = this.round.queue.map(({ route }) => {
+        this.riders = this.round.queue.map((route) => {
             const material = riderMaterials[route];
-            const rider = new Node('Passenger pose');
+            const rider = new Node('Passenger facing');
             rider.parent = this.ground;
-            originalPose(rider, shadows.passengerRoot);
-            rider.setScale(rider.scale.clone().multiplyScalar(0.83));
-            const body = this.model(passenger, rider, material);
+            const pose = new Node('Passenger pose');
+            pose.parent = rider;
+            originalPose(pose, shadows.passengerRoot);
+            pose.setScale(pose.scale.clone().multiplyScalar(0.83));
+            const body = this.model(passenger, pose, material);
             // The indexed VAT GLB reflects Z. Other prefab meshes reflect X.
             body.setRotationFromEuler(0, 180, 0);
-            originalPose(this.model(passengerShadow, rider, passengerShadowMaterial), shadows.passenger.pose);
+            originalPose(this.model(passengerShadow, pose, passengerShadowMaterial), shadows.passenger.pose);
             const renderer = body.getComponentInChildren(MeshRenderer)!;
             if (!this.idle) {
                 const frames = new OwnedPassengerVat(renderer.mesh!, vat.buffer());
                 this.idle = frames.play(clips.idle);
+                this.moving = frames.play(clips.move);
                 this.boarding = frames.play(clips.board);
             }
             renderer.mesh = this.idle.mesh;
@@ -315,7 +338,7 @@ export class OwnedArtGameplay extends Component {
         this.replayNode = this.makeImage('Original replay icon', replay);
         this.replayNode.on(Node.EventType.TOUCH_END, () => this.reset('restart'));
         this.ready = true;
-        log(`[OwnedGameplay] vat idle=${clips.idle.frameStart}+${clips.idle.frameCount} board=${clips.board.frameStart}+${clips.board.frameCount}`);
+        log(`[OwnedGameplay] vat idle=${clips.idle.frameStart}+${clips.idle.frameCount} move=${clips.move.frameStart}+${clips.move.frameCount} board=${clips.board.frameStart}+${clips.board.frameCount}`);
         this.reset('enter');
         this.scheduleOnce(() => this.reportTapCenters(), 0.15);
     }
@@ -329,12 +352,17 @@ export class OwnedArtGameplay extends Component {
         originalPose(cameraBasis, poses.camera);
         const cameraNode = new Node('GameScene Main Camera_2');
         cameraNode.parent = cameraBasis;
-        cameraNode.setRotationFromEuler(0, 180, 0);
+        const radiansPerDegree = Math.PI / 180;
+        const halfView = Math.tan(stageFov * radiansPerDegree / 2);
+        const framing = (offset: number) => Math.atan(2 * offset * halfView / referenceHeight) / radiansPerDegree;
+        const unityForward = Quat.fromEuler(new Quat(), 0, 180, 0);
+        const referenceRotation = Quat.fromEuler(new Quat(), framing(referenceOffset.y), framing(referenceOffset.x), 0);
+        cameraNode.setRotation(Quat.multiply(new Quat(), unityForward, referenceRotation));
         this.camera = cameraNode.addComponent(Camera);
         this.camera.priority = 0;
         this.camera.visibility = Layers.Enum.DEFAULT;
         this.camera.projection = Camera.ProjectionType.PERSPECTIVE;
-        this.camera.fov = 4.7;
+        this.camera.fov = stageFov;
         this.camera.near = 100;
         this.camera.far = 116;
         this.camera.clearFlags = Camera.ClearFlag.SOLID_COLOR;
@@ -401,6 +429,12 @@ export class OwnedArtGameplay extends Component {
         this.conveyor = new PassengerConveyor(this.ground, queue, this.round.queue.length);
         log('[OwnedGameplay] conveyor samples entry=' + queue.entry.length + ' ring=' + queue.ring.length);
     }
+
+    private readonly setConveyorMotion = (index: number, moving: boolean): void => {
+        const mesh = (moving ? this.moving : this.idle)!.mesh;
+        const renderer = this.riderRenderers[index];
+        if (renderer.mesh !== mesh) renderer.mesh = mesh;
+    };
 
     private model(prefab: Prefab, parent: Node, material: Material): Node {
         const root = instantiate(prefab);
@@ -469,28 +503,31 @@ export class OwnedArtGameplay extends Component {
     }
 
     private playAvailableBoarding(): void {
-        if (this.boardingRenderer) return;
+        if (this.resultShown || this.boardingWait > 0) return;
         const slot = this.round.boardingSlot();
         if (slot < 0) {
             const outcome = this.round.outcome;
             if (outcome !== 'playing') {
+                this.resultShown = true;
                 this.renderStatus();
                 this.report(outcome);
             }
             return;
         }
         const { vehicle } = this.round.bays[slot]!;
-        const rider = this.riders[this.round.consumed];
-        this.boarding?.reset();
-        const renderer = this.riderRenderers[this.round.consumed];
+        const index = this.round.reserve(slot);
+        this.boardingWait = boardingInterval;
+        const rider = this.riders[index];
+        const renderer = this.riderRenderers[index];
         renderer.mesh = this.boarding!.mesh;
-        this.boardingRenderer = renderer;
+
         log('[OwnedGameplay] animate-board ' + vehicle.id);
         const car = this.cars.get(vehicle.id)!;
         const destination = car.position.clone().add3f(0, 0.085, 0);
-        tween(rider).to(boardingTravel, { position: destination }, { easing: 'quadInOut' }).call(() => {
+        rider.setRotationFromEuler(0,
+            Math.atan2(destination.x - rider.position.x, destination.z - rider.position.z) * 180 / Math.PI, 0);
+        tween(rider).to(this.boardDuration, { position: destination }, { easing: 'quadInOut' }).call(() => {
             renderer.mesh = this.idle!.mesh;
-            this.boardingRenderer = undefined;
             rider.active = false;
             const model = this.vehicleModels.get(vehicle.id)!.bodyAndWheels;
             this.vehicleBoarding?.model.setScale(1, 1, 1);
@@ -521,11 +558,11 @@ export class OwnedArtGameplay extends Component {
         this.introReady = false;
         this.guideClock = 0;
         this.vehicleBoarding = undefined;
-        if (this.boardingRenderer) {
-            this.boardingRenderer.mesh = this.idle!.mesh;
-            this.boardingRenderer = undefined;
-        }
+        this.boardingWait = 0;
+        this.resultShown = false;
+        this.boarding?.reset();
         this.idle?.reset();
+        this.moving?.reset();
         fleet.forEach((vehicle) => {
             const car = this.cars.get(vehicle.id)!;
             car.active = true;
@@ -559,7 +596,7 @@ export class OwnedArtGameplay extends Component {
         this.pauseNode.on(Node.EventType.TOUCH_END, () => this.togglePause());
 
         [4, 8, 13].forEach((level, index) => {
-            const x = 290 * (index - 1);
+            const x = 350 * (index - 1);
             const button = this.makeImage('Locked prop ' + level, propButton);
             const lock = this.makeImage('Original padlock ' + level, padlock);
             const body = this.makeImage('Original padlock body ' + level, lockBody);
@@ -568,10 +605,10 @@ export class OwnedArtGameplay extends Component {
             levelLabel.enableOutline = true;
             levelLabel.outlineColor = new Color(63, 80, 97, 255);
             levelLabel.outlineWidth = 2;
-            this.positionHud(button, { anchor: [0.5, 0], position: [x, 125], size: [250, 140] });
-            this.positionHud(lock, { anchor: [0.5, 0], position: [x, 180], size: [60, 80] });
-            this.positionHud(body, { anchor: [0.5, 0], position: [x, 144], size: [90, 90] });
-            this.positionHud(levelLabel.node, { anchor: [0.5, 0], position: [x, 108], size: [245, 48] });
+            this.positionHud(button, { anchor: [0.5, 0], position: [x, 160], size: [250, 170] });
+            this.positionHud(lock, { anchor: [0.5, 0], position: [x, 215], size: [60, 80] });
+            this.positionHud(body, { anchor: [0.5, 0], position: [x, 179], size: [90, 90] });
+            this.positionHud(levelLabel.node, { anchor: [0.5, 0], position: [x, 143], size: [245, 48] });
             this.propNodes.push(button, lock, body, levelLabel.node);
         });
 

@@ -9,16 +9,17 @@ export interface ConveyorPaths {
     entry: Position[];
 }
 
-const entryDuration = 0.92;
-const conveyorDuration = 1.55;
-const rowWidth = 3;
-const laneSpacing = 0.135;
+const fillDuration = 4.35;
+const rowWidth = 5;
+const laneSpacing = 0.119;
 
 export class PassengerConveyor {
     private readonly ring: Vec3[];
     private readonly entry: Vec3[];
     private readonly merge: number;
     private readonly step: number;
+    private readonly entrySpan: number;
+    private readonly finalFront: number;
     private readonly sample = new Vec3();
     private elapsed = 0;
     private advanced = 0;
@@ -39,8 +40,13 @@ export class PassengerConveyor {
         });
         this.entry = [...entry, this.ring[mergeIndex]];
         this.merge = mergeIndex / (this.ring.length - 1);
-        const length = this.ring.slice(1).reduce((sum, point, index) => sum + Vec3.distance(this.ring[index], point), 0);
-        this.step = Math.min(paths.spacing / length, 1 / Math.ceil(avatarCount / rowWidth));
+        const ringLength = this.length(this.ring);
+        this.entrySpan = this.length(this.entry) / ringLength;
+        this.step = Math.min(paths.spacing / ringLength, 1 / Math.ceil(avatarCount / rowWidth));
+        const queueSpan = (avatarCount - 1) * this.step / rowWidth;
+        const exit = this.wrap(paths.exitPercent - this.merge);
+        // The first row keeps rolling until the last row has cleared the merge.
+        this.finalFront = exit + Math.max(0, Math.ceil(queueSpan - exit));
     }
 
     reset(riders: readonly Node[]): void {
@@ -49,39 +55,41 @@ export class PassengerConveyor {
         riders.forEach((rider) => { rider.active = false; });
     }
 
-    update(dt: number, riders: readonly Node[], boarded: number, boarding: boolean): boolean {
-        this.elapsed += dt;
-        this.advanced = Math.min(boarded, this.advanced + dt * 12);
-        let settled = true;
-        for (let index = boarded; index < riders.length; index++) {
-            if (boarding && index === boarded) continue;
+    update(
+        dt: number, riders: readonly Node[], departedQueue: number,
+        setMoving: (index: number, moving: boolean) => void,
+    ): boolean {
+        this.elapsed = Math.min(fillDuration, this.elapsed + dt);
+        const previous = this.advanced;
+        this.advanced = Math.min(departedQueue, this.advanced + dt * 24);
+        const filling = this.elapsed < fillDuration;
+        const moving = filling || this.advanced > previous;
+        const front = (this.finalFront + this.entrySpan) * this.elapsed / fillDuration - this.entrySpan;
+        for (let index = departedQueue; index < riders.length; index++) {
             const rider = riders[index];
-            const lane = (index % rowWidth - 1) * laneSpacing;
-            const time = this.elapsed - Math.floor(index / rowWidth) * 0.062 - index % rowWidth * 0.023;
-            const destination = this.paths.exitPercent - this.step * (index - this.advanced) / rowWidth;
-            const distance = this.wrap(destination - this.merge);
-            if (time < 0) {
-                settled = false;
-                continue;
-            }
+            const distance = front - this.step * (index - this.advanced) / rowWidth;
+            if (distance < -this.entrySpan) continue;
+            const lane = (index % rowWidth - (rowWidth - 1) / 2) * laneSpacing;
             rider.active = true;
-            if (time < entryDuration) {
-                this.place(rider, this.entry, time / entryDuration, lane);
-                settled = false;
-                continue;
+            if (distance < 0) {
+                this.place(rider, this.entry, 1 + distance / this.entrySpan, lane, moving);
+            } else {
+                this.place(rider, this.ring, this.wrap(this.merge + distance), lane, moving);
             }
-            const traveled = (time - entryDuration) / conveyorDuration;
-            this.place(rider, this.ring, this.wrap(this.merge + Math.min(traveled, distance)), lane);
-            settled &&= traveled >= distance;
+            setMoving(index, moving);
         }
-        return settled;
+        return !filling;
+    }
+
+    private length(points: readonly Vec3[]): number {
+        return points.slice(1).reduce((sum, point, index) => sum + Vec3.distance(points[index], point), 0);
     }
 
     private wrap(percent: number): number {
         return percent - Math.floor(percent);
     }
 
-    private place(rider: Node, points: readonly Vec3[], percent: number, lane: number): void {
+    private place(rider: Node, points: readonly Vec3[], percent: number, lane: number, moving: boolean): void {
         const sample = percent * (points.length - 1);
         const first = Math.min(Math.floor(sample), points.length - 2);
         const start = points[first];
@@ -90,7 +98,10 @@ export class PassengerConveyor {
         const dx = end.x - start.x;
         const dz = end.z - start.z;
         const run = Math.hypot(dx, dz);
-        if (run > 0) this.sample.add3f(lane * dz / run, 0, -lane * dx / run);
+        if (run > 0) {
+            this.sample.add3f(lane * dz / run, 0, -lane * dx / run);
+            if (moving) rider.setRotationFromEuler(0, Math.atan2(dx, dz) * 180 / Math.PI, 0);
+        }
         rider.setPosition(this.sample);
     }
 }
