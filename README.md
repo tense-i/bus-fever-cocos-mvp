@@ -38,3 +38,5 @@ bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586
 ```sh
 python3 tools/replay_reference_timing.py "$(command -v adb)" emulator-5586 "$apk" "$evidence/reference"
 ```
+
+胜利面板按原动画先进入标题、人物和烟花，再显示奖励与按钮。九枚旋转金币飞向钱包，20 枚奖励按到账进度更新。首关结算后可重玩。Android 整关回放同时保留胜利画面、收币中途和到账截图。素材转换命令为 `python3 tools/export_victory_effects.py base.apk assets/resources/owned-art`，需要 UnityPy 和 Pillow。烟花使用从原贴图和粒子参数烘焙的序列帧，金币使用原包的 4×4 旋转图集。

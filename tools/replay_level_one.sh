@@ -122,6 +122,11 @@ wait_log '"event":"won"' 1
 wait_log '[OwnedGameplay] victory-spine idle' 1
 capture won
 adb -s "$serial" shell 'input tap 543 1691; input tap 543 1691'
+if [[ "$scenario" != legacy ]]; then
+  wait_log '[OwnedGameplay] victory-collection start coins=9' 1
+  sleep 0.28
+  capture reward-collecting
+fi
 wait_log '[OwnedGameplay] victory-reward {"amount":20,"balance":120}' 1
 capture reward
 adb -s "$serial" shell input tap 543 1691

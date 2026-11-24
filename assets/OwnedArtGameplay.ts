@@ -193,6 +193,7 @@ export class OwnedArtGameplay extends Component {
     update(dt: number): void {
         if (this.paused) return;
         this.vehicleDrive?.update(dt);
+        this.resultPanels?.update(dt);
         if (this.ready && this.conveyor) {
             const settled = this.conveyor.update(
                 dt, this.riders, this.setConveyorMotion,
