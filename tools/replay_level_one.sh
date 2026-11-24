@@ -60,25 +60,36 @@ capture() {
   return 1
 }
 wait_log '[OwnedGameplay] tap-centers' 1
-rg -F '[OwnedGameplay] tap-centers' "$proof/runtime-current.log"
+sed -n 's/^.*\[OwnedGameplay\] tap-centers //p' "$proof/runtime-current.log" | tail -1 > "$proof/tap-centers.json"
+tap_car() {
+  local coords x y
+  coords=$(jq -er --arg id "$1" '.values[] | select(.id==$id) | [.x,.y] | @tsv' "$proof/tap-centers.json")
+  read -r x y <<< "$coords"
+  adb -s "$serial" shell input tap "$x" "$y"
+}
 capture opening
 sleep 0.92
 capture moving
 wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 1
 rg -F 'vat idle=1+60 move=61+19 board=80+19' "$proof/runtime-current.log"
 capture ready
-adb -s "$serial" shell input tap 758 1525
+tap_car Y1
 wait_log '"event":"parked","vehicle":"Y1"' 1
 capture first-bay
-adb -s "$serial" shell 'input tap 630 1458; sleep 0.14; input tap 469 1589; sleep 0.14; input tap 405 1684'
+tap_car Y2
+sleep 0.14
+tap_car R1
+sleep 0.14
+tap_car R2
 wait_log '"event":"lost"' 1
 capture lost
 adb -s "$serial" shell input tap 539 1414
 wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 2
-adb -s "$serial" shell 'input tap 803 1330; sleep 0.26'
+tap_car B1
+sleep 0.26
 capture enter-motion
 wait_log 'boarded B1 count=2 remaining=38' 1
-adb -s "$serial" shell input tap 758 1525
+tap_car Y1
 wait_log '"event":"parked","vehicle":"Y1"' 2
 sleep 0.20
 capture concurrent-parking
@@ -86,11 +97,13 @@ wait_log 'boarded B1 count=40 remaining=0' 1
 sleep 0.54
 capture exit-motion
 wait_log '"event":"departed","vehicle":"B1"' 1
-adb -s "$serial" shell 'input tap 630 1458; sleep 0.55; input tap 256 1550'
+tap_car Y2
+sleep 0.55
+tap_car B2
 wait_log 'boarded B2 count=60 remaining=20' 1
-adb -s "$serial" shell input tap 469 1589
+tap_car R1
 wait_log 'count=196 remaining=4' 1
-adb -s "$serial" shell input tap 405 1684
+tap_car R2
 wait_log '"event":"won"' 1
 wait_log '[OwnedGameplay] victory-spine idle' 1
 capture won
@@ -99,7 +112,9 @@ wait_log '[OwnedGameplay] victory-reward {"amount":20,"balance":120}' 1
 capture reward
 adb -s "$serial" shell input tap 543 1691
 wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 3
-adb -s "$serial" shell 'input tap 803 1330; sleep 0.14; input tap 1013 80'
+tap_car B1
+sleep 0.14
+adb -s "$serial" shell input tap 1013 80
 wait_log '[OwnedGameplay] pause' 1
 sleep 0.24
 capture driving-paused-a

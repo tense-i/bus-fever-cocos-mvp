@@ -70,14 +70,16 @@ interface VehicleBoardClip {
 
 // Staging approximates the six positions and headings visible in the Level 1 footage.
 const fleet = [
-    { id: 'B1', route: 'teal', position: new Vec3(-0.95, 0, -2.45), yaw: 66 },
-    { id: 'Y1', route: 'amber', position: new Vec3(-0.78, 0, -3.24), yaw: -31 },
-    { id: 'Y2', route: 'amber', position: new Vec3(-0.31, 0, -2.97), yaw: -31 },
-    { id: 'B2', route: 'teal', position: new Vec3(1.06, 0, -3.34), yaw: -31 },
-    { id: 'R1', route: 'red', position: new Vec3(0.28, 0, -3.50), yaw: 66 },
-    { id: 'R2', route: 'red', position: new Vec3(0.51, 0, -3.88), yaw: 66 },
+    { id: 'B1', route: 'teal', position: new Vec3(-0.90, 0, -2.54), yaw: 60 },
+    { id: 'Y1', route: 'amber', position: new Vec3(-0.73, 0, -3.30), yaw: -30 },
+    { id: 'Y2', route: 'amber', position: new Vec3(-0.29, 0, -3.05), yaw: -30 },
+    { id: 'B2', route: 'teal', position: new Vec3(1.04, 0, -3.40), yaw: -30 },
+    { id: 'R1', route: 'red', position: new Vec3(0.30, 0, -3.53), yaw: 60 },
+    { id: 'R2', route: 'red', position: new Vec3(0.51, 0, -3.94), yaw: 60 },
 ] as const;
-const parkedScale = new Vec3(0.14062501, 0.14062501, 0.14498439);
+const stationScale = new Vec3(0.14062501, 0.14062501, 0.14498439);
+const stagingScale = stationScale.clone().multiplyScalar(1.29);
+const vehicleBounds = new geometry.AABB(0, 1.16905, 0.01159, 1.08962, 0.98017, 2.32677);
 const arrowPose: Pose = {
     position: [0, 2.1400001, 0.079999998], rotation: [0, 1, 0, 0], scale: [1.125, 1.125, 1.125],
 };
@@ -296,7 +298,7 @@ export class OwnedArtGameplay extends Component {
         fleet.forEach((vehicle) => {
             const car = new Node(vehicle.id);
             car.parent = this.ground;
-            car.setScale(parkedScale);
+            car.setScale(stagingScale);
             const bodyAndWheels = new Node('Bus_001 and Wheel_001');
             bodyAndWheels.parent = car;
             const bodyNode = this.model(body, bodyAndWheels, busMaterials[vehicle.route]);
@@ -474,11 +476,15 @@ export class OwnedArtGameplay extends Component {
         const ray = this.camera.screenPointToRay(x, y);
         let best: Vehicle | undefined;
         let nearest = Infinity;
+        const endpoint = Vec3.add(new Vec3(), ray.o, ray.d);
+        const localRay = new geometry.Ray();
         for (const vehicle of fleet) {
             if (!this.round.ready.has(vehicle.id)) continue;
-            const center = this.cars.get(vehicle.id)!.worldPosition;
-            const bounds = new geometry.AABB(center.x, center.y + 0.14, center.z, 0.19, 0.21, 0.26);
-            const distance = geometry.intersect.rayAABB(ray, bounds);
+            const car = this.cars.get(vehicle.id)!;
+            car.inverseTransformPoint(localRay.o, ray.o);
+            car.inverseTransformPoint(localRay.d, endpoint);
+            localRay.d.subtract(localRay.o);
+            const distance = geometry.intersect.rayAABB(localRay, vehicleBounds);
             if (distance > 0 && distance < nearest) {
                 best = vehicle;
                 nearest = distance;
@@ -493,6 +499,7 @@ export class OwnedArtGameplay extends Component {
         const car = this.cars.get(vehicle.id)!;
         this.report('dispatch', vehicle.id);
         const bay = this.bays[slot];
+        tween(car).to(0.56, { scale: stationScale }, { easing: 'smooth' }).start();
         this.vehicleDrive!.enter(car, bay.position, bay.rotation, () => {
             this.vehicleModels.get(vehicle.id)!.arrow.active = false;
             this.round.park(slot);
@@ -566,6 +573,7 @@ export class OwnedArtGameplay extends Component {
         fleet.forEach((vehicle) => {
             const car = this.cars.get(vehicle.id)!;
             car.active = true;
+            car.setScale(stagingScale);
             car.setPosition(vehicle.position);
             car.setRotationFromEuler(0, vehicle.yaw, 0);
             const { bodyAndWheels, arrow } = this.vehicleModels.get(vehicle.id)!;
