@@ -80,6 +80,29 @@ const fleet = [
 const stationScale = new Vec3(0.14062501, 0.14062501, 0.14498439);
 const stagingScale = stationScale.clone().multiplyScalar(1.29);
 const vehicleBounds = new geometry.AABB(0, 1.16905, 0.01159, 1.08962, 0.98017, 2.32677);
+// The Whole BoxCollider from bus_normal_10, expressed in the staging coordinate system.
+const halfBodyWidth = 1.92 * stagingScale.x / 2;
+const halfBodyLength = 4.68043 * stagingScale.z / 2;
+type StagedVehicle = typeof fleet[number];
+
+function firstObstruction(car: StagedVehicle, ready: ReadonlySet<string>) {
+    const yaw = car.yaw * Math.PI / 180;
+    const dx = Math.sin(yaw), dz = Math.cos(yaw);
+    let nearest: { id: string; gap: number } | undefined;
+    for (const other of fleet) {
+        if (other === car || !ready.has(other.id)) continue;
+        // Level one's headings are either parallel or perpendicular.
+        const parallel = car.yaw === other.yaw;
+        const x = other.position.x - car.position.x, z = other.position.z - car.position.z;
+        const across = Math.abs(x * dz - z * dx);
+        if (across >= halfBodyWidth + (parallel ? halfBodyWidth : halfBodyLength)) continue;
+        const forward = x * dx + z * dz;
+        if (forward <= 0) continue;
+        const gap = Math.max(0, forward - halfBodyLength - (parallel ? halfBodyLength : halfBodyWidth));
+        if (!nearest || gap < nearest.gap) nearest = { id: other.id, gap };
+    }
+    return nearest;
+}
 const arrowPose: Pose = {
     position: [0, 2.1400001, 0.079999998], rotation: [0, 1, 0, 0], scale: [1.125, 1.125, 1.125],
 };
@@ -90,9 +113,13 @@ const seatBadgePose: Pose = {
 };
 const passengerInterval = 0.03;
 const groupInterval = 0.04;
+// BusJamConfig.passengerGroupAboardSpeed and parkingSpotPassengerStopPoint (mirrored X).
+const boardingSpeed = 3.8;
+const boardingStop = new Vec3(0.05, -0.05, -0.08);
 const guideStart = 1.2;
 
 interface ParkingBay {
+    boardingPoint: Vec3;
     position: Vec3;
     rotation: Quat;
     badge: Node;
@@ -118,11 +145,11 @@ export class OwnedArtGameplay extends Component {
     private boarding?: OwnedPassengerPlayback;
     private boardingClock = 0;
     private resultShown = false;
-    private boardDuration = 0;
     private vehicleBoardClip!: VehicleBoardClip;
     private vehicleBoarding?: { model: Node; elapsed: number };
     private vehicleModels = new Map<string, { bodyAndWheels: Node; arrow: Node; outline: Node }>();
     private materials: Material[] = [];
+    private readonly contacting = new Set<string>();
     private cars = new Map<string, Node>();
     private riders: Node[] = [];
     private riderRenderers: MeshRenderer[] = [];
@@ -266,7 +293,6 @@ export class OwnedArtGameplay extends Component {
         const clips = clipData.json as unknown as PassengerClips;
         const surfaces = surfaceData.json as unknown as CarSurfaceParameters;
         this.hud = hudData.json as unknown as HudLayout;
-        this.boardDuration = clips.board.duration;
         this.vehicleBoardClip = vehicleBoardClip.json as unknown as VehicleBoardClip;
         const busMaterials = {
             teal: originalCarMaterial(carEffect, blue, surfaces, surfaces.blue),
@@ -414,7 +440,9 @@ export class OwnedArtGameplay extends Component {
             badgeLabel.enableOutline = true;
             badgeLabel.outlineColor = new Color(39, 61, 75, 255);
             badgeLabel.outlineWidth = 1;
+            const stop = Vec3.transformMat4(new Vec3(), boardingStop, bay.worldMatrix);
             this.bays.push({
+                boardingPoint: this.ground.inverseTransformPoint(new Vec3(), stop),
                 position: Vec3.add(new Vec3(), parkingRoot.position, bay.position),
                 rotation: bay.rotation.clone(), badge, badgeLabel,
             });
@@ -485,7 +513,7 @@ export class OwnedArtGameplay extends Component {
         if (!this.ready || this.guideClock < guideStart || this.paused || this.round.outcome !== 'playing') return;
         const { x, y } = event.getLocation();
         const ray = this.camera.screenPointToRay(x, y);
-        let best: Vehicle | undefined;
+        let best: StagedVehicle | undefined;
         let nearest = Infinity;
         const endpoint = Vec3.add(new Vec3(), ray.o, ray.d);
         const localRay = new geometry.Ray();
@@ -504,21 +532,38 @@ export class OwnedArtGameplay extends Component {
         if (best) this.dispatch(best);
     }
 
-    private dispatch(vehicle: Vehicle): void {
+    private dispatch(vehicle: StagedVehicle): void {
         if (!this.tutorialComplete && this.nextGuideVehicle()?.id !== vehicle.id) {
             log('[OwnedGameplay] guide-blocked ' + vehicle.id);
             return;
         }
+        if (this.contacting.has(vehicle.id) || this.round.bays.indexOf(null) < 0) return;
+        const car = this.cars.get(vehicle.id)!;
+        const obstruction = firstObstruction(vehicle, this.round.ready);
+        if (obstruction) {
+            this.contacting.add(vehicle.id);
+            const heading = Vec3.transformQuat(new Vec3(), Vec3.UNIT_Z, car.rotation);
+            const origin = vehicle.position;
+            const contact = origin.clone().add(heading.multiplyScalar(obstruction.gap));
+            tween(car).to(0.14, { position: contact }, { easing: 'quadOut' })
+                .call(() => log(`[OwnedGameplay] contact ${vehicle.id} ${obstruction.id} gap=${obstruction.gap.toFixed(3)}`))
+                .to(0.19, { position: origin.clone() }, { easing: 'smooth' })
+                .call(() => {
+                    this.contacting.delete(vehicle.id);
+                    log(`[OwnedGameplay] returned ${vehicle.id}`);
+                    this.report('contact-return', vehicle.id);
+                }).start();
+            return;
+        }
         const slot = this.round.dispatch(vehicle);
         if (slot < 0) return;
-        const car = this.cars.get(vehicle.id)!;
         this.report('dispatch', vehicle.id);
         const bay = this.bays[slot];
         tween(car).to(0.56, { scale: stationScale }, { easing: 'smooth' }).start();
         this.vehicleDrive!.enter(car, bay.position, bay.rotation, () => {
             this.vehicleModels.get(vehicle.id)!.arrow.active = false;
             const belt = this.conveyor!;
-            this.round.park(slot, belt.exitCells.map(cell => this.round.queue[belt.passengerAt(cell)]).filter(Boolean));
+            this.round.park(slot);
             const arrivalCells = [...belt.exitCells].sort((a, b) => belt.distanceToExitEnd(a) - belt.distanceToExitEnd(b));
             for (const cell of arrivalCells) {
                 const rider = belt.passengerAt(cell);
@@ -536,6 +581,9 @@ export class OwnedArtGameplay extends Component {
     private playAvailableBoarding(): void {
         if (this.resultShown) return;
         const belt = this.conveyor!;
+        if (this.round.needsFailureCheck && this.introReady && belt.canCheckFailure(this.riders.length)) {
+            this.round.checkFailure(belt.occupiedCells);
+        }
         const outcome = this.round.outcome;
         if (outcome !== 'playing') {
             if (outcome === 'won') this.tutorialComplete = true;
@@ -570,11 +618,11 @@ export class OwnedArtGameplay extends Component {
         renderer.mesh = this.boarding!.mesh;
 
         log('[OwnedGameplay] animate-board ' + vehicle.id);
-        const car = this.cars.get(vehicle.id)!;
-        const destination = car.position.clone().add3f(0, 0.085, 0);
+        const destination = this.bays[slot].boardingPoint;
+        const travelTime = Vec3.distance(rider.position, destination) / boardingSpeed;
         rider.setRotationFromEuler(0,
             Math.atan2(destination.x - rider.position.x, destination.z - rider.position.z) * 180 / Math.PI, 0);
-        tween(rider).delay(delay).to(this.boardDuration, { position: destination }, { easing: 'quadInOut' }).call(() => {
+        tween(rider).delay(delay).to(travelTime, { position: destination }).call(() => {
             renderer.mesh = this.idle!.mesh;
             rider.active = false;
             const model = this.vehicleModels.get(vehicle.id)!.bodyAndWheels;
@@ -584,12 +632,13 @@ export class OwnedArtGameplay extends Component {
             const remaining = this.round.board(slot);
             this.setSeatBadge(slot, vehicle.route, remaining);
             log(`[OwnedGameplay] boarded ${vehicle.id} count=${this.round.boarded} remaining=${remaining}`);
-            if (!remaining) this.depart(slot, vehicle.id, car);
+            if (!remaining) this.depart(slot, vehicle.id);
             this.playAvailableBoarding();
         }).start();
     }
 
-    private depart(slot: number, vehicleId: string, car: Node): void {
+    private depart(slot: number, vehicleId: string): void {
+        const car = this.cars.get(vehicleId)!;
         const stillInPlay = this.round.ready.size + this.round.bays.filter(bay => bay && bay.stage !== 'leaving').length;
         this.conveyor!.boostForRemainingVehicles(stillInPlay);
         this.vehicleDrive!.exit(car, () => {
@@ -636,6 +685,7 @@ export class OwnedArtGameplay extends Component {
     }
 
     private stopMoves(): void {
+        this.contacting.clear();
         this.cars.forEach((node) => Tween.stopAllByTarget(node));
         this.riders.forEach((node) => Tween.stopAllByTarget(node));
         this.vehicleDrive?.reset();
@@ -669,7 +719,7 @@ export class OwnedArtGameplay extends Component {
         this.guideCircle = this.makeImage('Tap marker', circle);
         this.guideHand = this.makeImage('Original tutorial hand', hand);
         this.positionHud(this.guideCircle, { anchor: [0.5, 0.5], position: [0, 0], size: [102, 102] });
-        this.positionHud(this.guideHand, { anchor: [0.5, 0.5], position: [0, 0], size: [420, 433] });
+        this.positionHud(this.guideHand, { anchor: [0.5, 0.5], position: [0, 0], size: [724, 746] });
         this.guideCard = this.makeImage('Original first-dispatch tutorial', tutorialPanel);
         const panel = this.guideCard.getComponent(Sprite)!;
         const frame = panel.spriteFrame!;
@@ -707,7 +757,9 @@ export class OwnedArtGameplay extends Component {
         const pulse = Math.sin(this.guideClock * 7);
         this.guideCircle!.setPosition(x * factor, y * factor, 0);
         this.guideCircle!.setScale(1 + pulse * 0.13, 1 + pulse * 0.13, 1);
-        this.guideHand!.setPosition((x + 125 + pulse * 10) * factor, (y - 152 - pulse * 10) * factor, 0);
+        const hudUnit = this.getComponent(UITransform)!.width / 1080;
+        this.guideHand!.setPosition(x * factor + (210 + pulse * 10) * hudUnit,
+            y * factor - (250 + pulse * 10) * hudUnit, 0);
     }
 
     private togglePause(): void {

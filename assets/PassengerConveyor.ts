@@ -15,7 +15,7 @@ export interface ConveyorPaths {
 
 const entryTravelTime = 1.35;
 const fillDuration = 4.65;
-const normalSpeed = 0.117;
+const normalSpeed = 0.123;
 const boostedSpeed = 0.221;
 const rowWidth = passengerGroupSize;
 const laneSpacing = 0.13;
@@ -118,6 +118,12 @@ export class PassengerConveyor {
             setMoving(i, filling);
         }
         return !filling;
+    }
+
+    get occupiedCells(): readonly number[] { return this.cells; }
+
+    canCheckFailure(total: number): boolean {
+        return this.admitted === total || this.cells.indexOf(-1) < 0;
     }
 
     passengerAt(cell: number): number { return this.cells[cell]; }

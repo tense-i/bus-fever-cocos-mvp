@@ -5,6 +5,7 @@ set -eu
 apk=${1:?Provide the tested APK}
 proof=${2:?Provide an evidence directory}
 serial=${3:-emulator-5586}
+scenario=${4:-current}
 mkdir -p "$proof"
 pkg=local.cocos.busfeverplay
 adb -s "$serial" shell am force-stop "$pkg"
@@ -67,6 +68,25 @@ tap_car() {
   read -r x y <<< "$coords"
   adb -s "$serial" shell input tap "$x" "$y"
 }
+# The separately built deadlock fixture changes only vehicle colors and belt capacity.
+if [[ "$scenario" = failure-fixture ]]; then
+  wait_log '[OwnedGameplay] passengers-in-ring 240' 1
+  for car in B1 Y1 Y2 B2; do
+    tap_car "$car"
+    wait_log '"event":"parked","vehicle":"'"$car"'"' 1
+  done
+  wait_log '"event":"lost"' 1
+  capture lost
+  adb -s "$serial" shell input tap 539 1414
+  wait_log '[OwnedGameplay] passengers-in-ring 240' 2
+  capture reset
+  sed -nE 's/^.*\[OwnedGameplay\] (\{.*\})$/\1/p' "$proof/runtime-current.log" > "$proof/e2e.ndjson"
+  jq -se '([.[] | select(.event=="lost") | [.boarded,.outcome,[.bays[].seatsLeft]]] ==
+            [[0,"lost",[40,40,40,40]]]) and
+          ([.[] | select(.event=="restart") | [.boarded,.outcome,.bays,(.ready|length)]] ==
+            [[0,"playing",[],6]])' "$proof/e2e.ndjson" > "$proof/assertion.txt"
+  exit 0
+fi
 capture opening
 sleep 0.92
 capture moving
@@ -107,16 +127,34 @@ capture reward
 adb -s "$serial" shell input tap 543 1691
 wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 2
 capture ready
-# Send the four mismatched vehicles as the blue group approaches the exit.
-sleep 2
-tap_car Y1
-tap_car Y2
-tap_car R1
-tap_car R2
-wait_log '"event":"lost"' 1
-capture lost
-adb -s "$serial" shell input tap 539 1414
+if [[ "$scenario" = legacy ]]; then
+  # Send the four mismatched vehicles as the blue group approaches the exit.
+  sleep 2
+  tap_car Y1
+  tap_car Y2
+  tap_car R1
+  tap_car R2
+  wait_log '"event":"lost"' 1
+  capture lost
+  adb -s "$serial" shell input tap 539 1414
+else
+  for pair in 'Y1 B1' 'Y2 B1' 'R1 B2' 'R2 B2'; do
+    read -r car blocker <<< "$pair"
+    tap_car "$car"
+    wait_log "[OwnedGameplay] contact $car $blocker" 1
+    wait_log "[OwnedGameplay] returned $car" 1
+  done
+  capture after-four-contacts
+  # A clear exit releases both cars behind it. Fill four bays using legal moves.
+  for car in B2 R1 R2 B1; do
+    tap_car "$car"
+    wait_log '"event":"parked","vehicle":"'"$car"'"' 2
+  done
+  capture free-four-bays
+  adb -s "$serial" shell input tap 67 80
+fi
 wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 3
+prior_b1=$(rg -cF '[OwnedGameplay] animate-board B1' "$proof/runtime-current.log")
 tap_car B1
 sleep 0.14
 adb -s "$serial" shell input tap 1013 80
@@ -127,7 +165,7 @@ sleep 0.8
 capture driving-paused-b
 cmp "$proof/driving-paused-a.png" "$proof/driving-paused-b.png"
 adb -s "$serial" shell input tap 1013 80
-wait_log '[OwnedGameplay] animate-board B1' 41
+wait_log '[OwnedGameplay] animate-board B1' "$((prior_b1+1))"
 adb -s "$serial" shell input tap 1013 80
 wait_log '[OwnedGameplay] pause' 2
 paused_count=$(rg -cF '[OwnedGameplay] boarded ' "$proof/runtime-current.log")
@@ -140,19 +178,26 @@ wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 4
 capture reset
 adb -s "$serial" logcat -d --pid="$pid" -v raw > "$proof/e2e-runtime.log"
 sed -nE 's/^.*\[OwnedGameplay\] (\{.*\})$/\1/p' "$proof/e2e-runtime.log" > "$proof/e2e.ndjson"
-jq -se '
-  (map(select(.event=="lost")|[.boarded,.outcome,(.bays|map(.seatsLeft))]) == [[0,"lost",[40,40,40,40]]]) and
+jq -se --arg mode "$scenario" '
+  (map(.event)|index("won")) as $win |
+  (if $mode=="legacy" then (map(select(.event=="lost")|[.boarded,.outcome,(.bays|map(.seatsLeft))]) == [[0,"lost",[40,40,40,40]]]) else
+     ([.[] | select(.event=="lost")]|length)==0 and
+     ([.[] | select(.event=="contact-return") | [.vehicle,.boarded,(.bays|length),(.ready|length)]] ==
+       [["Y1",0,0,6],["Y2",0,0,6],["R1",0,0,6],["R2",0,0,6]]) and
+     any(.[]; .event=="parked" and .vehicle=="B1" and ([.bays[].id] == ["B2","R1","R2","B1"]))
+   end) and
   (any(.[]; .event=="parked" and .vehicle=="Y1" and .boarded>0 and .boarded<40 and
              any(.bays[]; .id=="B1" and .stage=="parked" and .seatsLeft>0))) and
-  (map(select(.event=="departed")|.vehicle)|sort == ["B1","B2","R1","R2","Y1","Y2"]) and
-  (map(select(.event=="vacated")|.vehicle)|sort == ["B1","B2","R1","R2","Y1","Y2"]) and
+  (.[0:$win]|map(select(.event=="departed")|.vehicle)|sort == ["B1","B2","R1","R2","Y1","Y2"]) and
+  (.[0:$win]|map(select(.event=="vacated")|.vehicle)|sort == ["B1","B2","R1","R2","Y1","Y2"]) and
   (map(select(.event=="won")|[.boarded,.outcome,.bays]) == [[240,"won",[]]]) and
   ((map(select(.event=="enter" or .event=="restart")|del(.event))|unique|length)==1) and
   (map(select(.event=="restart"))|length==3)
 ' "$proof/e2e.ndjson" > "$proof/assertion.txt"
-test "$(rg -cF '[OwnedGameplay] belt-boost remaining=4' "$proof/e2e-runtime.log")" = 1
+sed '/"event":"won"/q' "$proof/e2e-runtime.log" > "$proof/win-runtime.log"
+test "$(rg -cF '[OwnedGameplay] belt-boost remaining=4' "$proof/win-runtime.log")" = 1
 test "$(rg -cF '[OwnedGameplay] victory-reward' "$proof/e2e-runtime.log")" = 1
-test "$(rg -c 'vehicle-motion [BRY][12] exit smoke=[1-9][0-9]*' "$proof/e2e-runtime.log")" = 6
+test "$(rg -c 'vehicle-motion [BRY][12] exit smoke=[1-9][0-9]*' "$proof/win-runtime.log")" = 6
 test "$(rg -c 'vehicle-motion [BRY][12] enter smoke=[1-9][0-9]*' "$proof/e2e-runtime.log")" = 11
 rg -F '[OwnedGameplay] vehicle-motion' "$proof/e2e-runtime.log" > "$proof/drive-events.txt"
 python3 - "$proof/e2e-runtime.log" "$proof/individual-boarding.json" <<'PY'

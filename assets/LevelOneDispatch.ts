@@ -43,10 +43,17 @@ export class LevelOneDispatch {
         return slot;
     }
 
-    park(slot: number, atExit: Route[]): void {
+    park(slot: number): void {
         this.bays[slot]!.stage = 'parked';
-        this.blocked = this.boarded === this.consumed && this.bays.every(bay => bay?.stage === 'parked')
-            && atExit.length > 0 && atExit.every(route => this.boardingSlot(route) < 0);
+    }
+
+    get needsFailureCheck(): boolean {
+        return this.boarded === this.consumed && this.bays.every(bay => bay?.stage === 'parked');
+    }
+
+    checkFailure(cells: readonly number[]): void {
+        this.blocked = cells.some(rider => rider >= 0)
+            && !cells.some(rider => rider >= 0 && this.boardingSlot(this.queue[rider]) >= 0);
     }
 
     boardingSlot(route: Route): number {
