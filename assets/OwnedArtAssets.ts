@@ -1,5 +1,4 @@
 import { Asset, gfx, Color, EffectAsset, Material, Mesh, Prefab, resources, Texture2D, utils, Vec3, Vec4 } from 'cc';
-import type { IDynamicGeometry } from 'cc';
 
 const vertexCount = 471;
 const frameCount = 99;
@@ -169,7 +168,7 @@ export class OwnedPassengerVat {
 
 export class OwnedPassengerPlayback {
     readonly mesh: Mesh;
-    private readonly geometry: IDynamicGeometry;
+    private readonly geometry: Parameters<typeof utils.MeshUtils.createDynamicMesh>[1];
     private time = 0;
     private displayed: number;
 

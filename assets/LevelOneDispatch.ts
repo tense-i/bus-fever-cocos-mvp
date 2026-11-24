@@ -1,11 +1,16 @@
 import type { Outcome, Route, Vehicle } from './DispatchRound';
 
+interface BoardingGroup {
+    members: number[];
+    waitForEarlier: boolean;
+    nextPassengerAt: number;
+}
+
 interface Bay {
     vehicle: Vehicle;
     seatsLeft: number;
     reserved: number;
-    waitingGroups: number[][];
-    nextGroupAt: number;
+    waitingGroups: BoardingGroup[];
     stage: 'entering' | 'parked' | 'leaving';
 }
 
@@ -39,7 +44,7 @@ export class LevelOneDispatch {
     dispatch(vehicle: Vehicle): number {
         const slot = this.bays.indexOf(null);
         if (slot < 0 || this.outcome !== 'playing' || !this.ready.delete(vehicle.id)) return -1;
-        this.bays[slot] = { vehicle, seatsLeft: levelOneSeats, reserved: 0, stage: 'entering', waitingGroups: [], nextGroupAt: 0 };
+        this.bays[slot] = { vehicle, seatsLeft: levelOneSeats, reserved: 0, stage: 'entering', waitingGroups: [] };
         return slot;
     }
 
@@ -65,11 +70,11 @@ export class LevelOneDispatch {
         return bay?.stage === 'parked' && bay.vehicle.route === route && bay.seatsLeft - bay.reserved >= passengerGroupSize;
     }
 
-    reserve(slot: number, members: number[]): void {
+    reserve(slot: number, members: number[], waitForEarlier: boolean): void {
         const bay = this.bays[slot]!;
         bay.reserved += members.length;
         this.consumed += members.length;
-        bay.waitingGroups.push(members);
+        bay.waitingGroups.push({ members, waitForEarlier, nextPassengerAt: 0 });
     }
 
     board(slot: number): number {

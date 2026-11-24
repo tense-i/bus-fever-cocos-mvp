@@ -111,8 +111,7 @@ const seatBadgePose: Pose = {
     rotation: [0.140974447, 0.184593737, -0.026764831, 0.972283423],
     scale: [1, 1, 1],
 };
-const passengerInterval = 0.03;
-const groupInterval = 0.04;
+const passengerInterval = 0.04;
 // BusJamConfig.passengerGroupAboardSpeed and parkingSpotPassengerStopPoint (mirrored X).
 const boardingSpeed = 3.8;
 const boardingStop = new Vec3(0.05, -0.05, -0.08);
@@ -568,7 +567,7 @@ export class OwnedArtGameplay extends Component {
             for (const cell of arrivalCells) {
                 const rider = belt.passengerAt(cell);
                 if (rider >= 0 && this.round.canReserve(slot, this.round.queue[rider])) {
-                    this.round.reserve(slot, belt.releaseGroup(cell));
+                    this.round.reserve(slot, belt.reserveGroup(cell), true);
                     log(`[OwnedGameplay] arrival-reservation ${vehicle.id} rider=${rider} slot=${slot}`);
                 }
             }
@@ -601,18 +600,25 @@ export class OwnedArtGameplay extends Component {
                 if (this.round.bays.some((_, later) => later > slot && this.round.canReserve(later, route))) {
                     log(`[OwnedGameplay] same-color-choice ${this.round.bays[slot]!.vehicle.id} slot=${slot}`);
                 }
-                this.round.reserve(slot, belt.releaseGroup(cell));
+                this.round.reserve(slot, belt.reserveGroup(cell), false);
             }
         }
         this.round.bays.forEach((bay, slot) => {
-            if (!bay || !bay.waitingGroups.length || this.boardingClock < bay.nextGroupAt) return;
-            const members = bay.waitingGroups.shift()!;
-            bay.nextGroupAt = this.boardingClock + (members.length - 1) * passengerInterval + groupInterval;
-            members.forEach((member, order) => this.movePassengerToSeat(member, slot, bay.vehicle, order * passengerInterval));
+            if (!bay) return;
+            for (let i = 0; i < bay.waitingGroups.length; i++) {
+                const group = bay.waitingGroups[i];
+                if ((group.waitForEarlier && i > 0) || this.boardingClock < group.nextPassengerAt) continue;
+                group.waitForEarlier = false;
+                const member = group.members.shift()!;
+                group.nextPassengerAt = this.boardingClock + passengerInterval;
+                belt.leaveForVehicle(member);
+                this.movePassengerToSeat(member, slot, bay.vehicle);
+                if (!group.members.length) bay.waitingGroups.splice(i--, 1);
+            }
         });
     }
 
-    private movePassengerToSeat(index: number, slot: number, vehicle: Vehicle, delay: number): void {
+    private movePassengerToSeat(index: number, slot: number, vehicle: Vehicle): void {
         const rider = this.riders[index];
         const renderer = this.riderRenderers[index];
         renderer.mesh = this.boarding!.mesh;
@@ -622,7 +628,7 @@ export class OwnedArtGameplay extends Component {
         const travelTime = Vec3.distance(rider.position, destination) / boardingSpeed;
         rider.setRotationFromEuler(0,
             Math.atan2(destination.x - rider.position.x, destination.z - rider.position.z) * 180 / Math.PI, 0);
-        tween(rider).delay(delay).to(travelTime, { position: destination }).call(() => {
+        tween(rider).to(travelTime, { position: destination }).call(() => {
             renderer.mesh = this.idle!.mesh;
             rider.active = false;
             const model = this.vehicleModels.get(vehicle.id)!.bodyAndWheels;

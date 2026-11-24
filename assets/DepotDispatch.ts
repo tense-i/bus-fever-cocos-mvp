@@ -15,6 +15,7 @@ const palette = {
     dimmed: '#57716F',
     teal: '#75DEC7',
     amber: '#FFBD75',
+    red: '#FF947A',
     loss: '#FF947A',
 };
 

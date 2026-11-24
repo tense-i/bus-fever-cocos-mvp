@@ -33,6 +33,7 @@ export class PassengerConveyor {
     private front: number;
     private admitted = 0;
     private readonly cells: number[];
+    private readonly reservedCells = new Map<number, number>();
     readonly exitCells: number[] = [];
 
     constructor(ground: Node, private readonly paths: ConveyorPaths, avatarCount: number) {
@@ -64,6 +65,7 @@ export class PassengerConveyor {
         this.speed = normalSpeed;
         this.front = -this.entrySpan;
         this.admitted = this.cells.length;
+        this.reservedCells.clear();
         this.exitCells.length = 0;
         for (let i = 0; i < this.cells.length; i++) this.cells[i] = i;
         riders.forEach((rider) => { rider.active = false; });
@@ -80,9 +82,7 @@ export class PassengerConveyor {
         else if (filling) this.front = (this.elapsed - entryTravelTime) / (fillDuration - entryTravelTime);
         else {
             if (previous < 1) this.speed = 1 / (fillDuration - entryTravelTime);
-            const target = this.boosted ? boostedSpeed : normalSpeed;
-            const slew = (target > this.speed ? 0.104 : 0.31) * dt;
-            this.speed += Math.sign(target - this.speed) * Math.min(Math.abs(target - this.speed), slew);
+            this.speed = this.boosted ? boostedSpeed : Math.max(normalSpeed, this.speed - 0.31 * dt);
             this.front = Math.max(1, previous + dt * this.speed);
         }
         this.exitCells.length = 0;
@@ -98,7 +98,7 @@ export class PassengerConveyor {
             if (index < 0) continue;
             if (distance < -this.entrySpan) continue;
             const rider = riders[index];
-            const lane = (cell % rowWidth - (rowWidth - 1) / 2) * laneSpacing;
+            const lane = this.laneOffset(cell);
             rider.active = true;
             if (distance < 0) {
                 this.place(rider, this.entry, 1 + distance / this.entrySpan, lane, true);
@@ -109,10 +109,14 @@ export class PassengerConveyor {
             }
             setMoving(index, true);
         }
+        for (const [rider, cell] of this.reservedCells) {
+            const percent = this.wrap(this.merge + this.front - this.step * Math.floor(cell / rowWidth));
+            this.place(riders[rider], this.ring, percent, this.laneOffset(cell), true);
+        }
         for (let i = this.admitted; i < riders.length; i++) {
             const distance = Math.min(0, this.front - 1) - this.step * (1 + Math.floor((i - this.admitted) / rowWidth));
             if (distance < -this.entrySpan) continue;
-            const lane = ((i - this.admitted) % rowWidth - (rowWidth - 1) / 2) * laneSpacing;
+            const lane = this.laneOffset(i - this.admitted);
             riders[i].active = true;
             this.place(riders[i], this.entry, 1 + distance / this.entrySpan, lane, true);
             setMoving(i, filling);
@@ -139,10 +143,19 @@ export class PassengerConveyor {
         log(`[OwnedGameplay] belt-boost remaining=${remaining}`);
     }
 
-    releaseGroup(cell: number): number[] {
+    reserveGroup(cell: number): number[] {
         const members = this.cells.slice(cell, cell + rowWidth);
+        members.forEach((rider, offset) => this.reservedCells.set(rider, cell + offset));
         this.cells.fill(-1, cell, cell + rowWidth);
         return members;
+    }
+
+    leaveForVehicle(rider: number): void {
+        this.reservedCells.delete(rider);
+    }
+
+    private laneOffset(cell: number): number {
+        return (cell % rowWidth - (rowWidth - 1) / 2) * laneSpacing;
     }
 
     private length(points: readonly Vec3[]): number {

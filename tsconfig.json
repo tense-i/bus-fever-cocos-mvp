@@ -1,6 +1,8 @@
 {
   "extends": "./temp/tsconfig.cocos.json",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ES2019", "DOM", "DOM.Iterable"]
   }
 }
