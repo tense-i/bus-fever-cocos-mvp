@@ -58,7 +58,7 @@ export class VehicleDrive {
             .call(() => this.finish(car, 'enter', done)).start();
     }
 
-    exit(car: Node, done: () => void): void {
+    exit(car: Node, onLane: () => void, done: () => void): void {
         const start = car.position.clone();
         const reverseHeading = this.heading(car.rotation).multiplyScalar(-1);
         const back = start.clone().add(reverseHeading.clone().multiplyScalar(0.52));
@@ -69,6 +69,7 @@ export class VehicleDrive {
         this.startEmission(car);
         tween(car).then(this.line(car, start, back, 0.16, true))
             .then(this.segment(car, back, curveStart, curveEnd, lane, 0.23, true))
+            .call(onLane)
             .delay(0.10)
             .then(this.line(car, lane, offscreen, 0.48, false, 'quadIn'))
             .call(() => this.finish(car, 'exit', done)).start();

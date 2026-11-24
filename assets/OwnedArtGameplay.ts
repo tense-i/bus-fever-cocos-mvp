@@ -580,8 +580,11 @@ export class OwnedArtGameplay extends Component {
         const stillInPlay = this.round.ready.size + this.round.bays.filter(bay => bay && bay.stage !== 'leaving').length;
         this.conveyor!.boostForRemainingVehicles(stillInPlay);
         this.vehicleDrive!.exit(car, () => {
+            this.round.vacate(slot);
+            this.report('vacated', vehicleId);
+        }, () => {
             car.active = false;
-            this.round.depart(slot);
+            this.round.depart(vehicleId);
             this.report('departed', vehicleId);
             this.playAvailableBoarding();
         });

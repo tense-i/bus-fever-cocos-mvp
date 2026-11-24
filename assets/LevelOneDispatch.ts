@@ -22,13 +22,14 @@ export class LevelOneDispatch {
     boarded = 0;
     consumed = 0;
     private blocked = false;
+    private readonly exiting = new Set<string>();
 
     constructor(vehicles: readonly Vehicle[]) {
         this.ready = new Set(vehicles.map(({ id }) => id));
     }
 
     get outcome(): Outcome {
-        if (this.consumed === this.queue.length && this.bays.every((bay) => bay === null)) return 'won';
+        if (this.consumed === this.queue.length && this.exiting.size === 0 && this.bays.every((bay) => bay === null)) return 'won';
         if (this.blocked) return 'lost';
         return 'playing';
     }
@@ -64,8 +65,13 @@ export class LevelOneDispatch {
         return bay.seatsLeft;
     }
 
-    depart(slot: number): void {
+    vacate(slot: number): void {
+        this.exiting.add(this.bays[slot]!.vehicle.id);
         this.bays[slot] = null;
+    }
+
+    depart(vehicleId: string): void {
+        this.exiting.delete(vehicleId);
     }
 
     private groups(route: Route, passengers: number): Route[] {

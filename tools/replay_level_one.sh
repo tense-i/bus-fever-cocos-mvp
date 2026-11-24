@@ -145,6 +145,7 @@ jq -se '
   (any(.[]; .event=="parked" and .vehicle=="Y1" and .boarded>0 and .boarded<40 and
              any(.bays[]; .id=="B1" and .stage=="parked" and .seatsLeft>0))) and
   (map(select(.event=="departed")|.vehicle)|sort == ["B1","B2","R1","R2","Y1","Y2"]) and
+  (map(select(.event=="vacated")|.vehicle)|sort == ["B1","B2","R1","R2","Y1","Y2"]) and
   (map(select(.event=="won")|[.boarded,.outcome,.bays]) == [[240,"won",[]]]) and
   ((map(select(.event=="enter" or .event=="restart")|del(.event))|unique|length)==1) and
   (map(select(.event=="restart"))|length==3)
