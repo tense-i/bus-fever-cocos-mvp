@@ -13,8 +13,6 @@ export interface ConveyorPaths {
     entry: Position[];
 }
 
-const entryTravelTime = 1.35;
-const fillDuration = 4.65;
 const normalSpeed = 0.123;
 const boostedSpeed = 0.221;
 const rowWidth = passengerGroupSize;
@@ -28,6 +26,9 @@ export class PassengerConveyor {
     private readonly entrySpan: number;
     private readonly sample = new Vec3();
     private elapsed = 0;
+    private entryTravelTime = 0;
+    private fillDuration = 0;
+    private settleRate = 0;
     private speed = normalSpeed;
     private boosted = false;
     private front: number;
@@ -59,7 +60,10 @@ export class PassengerConveyor {
         this.front = -this.entrySpan;
     }
 
-    reset(riders: readonly Node[]): void {
+    reset(riders: readonly Node[], entrySeconds: number, fillSeconds: number, settleRate: number): void {
+        this.entryTravelTime = entrySeconds;
+        this.fillDuration = fillSeconds;
+        this.settleRate = settleRate;
         this.elapsed = 0;
         this.boosted = false;
         this.speed = normalSpeed;
@@ -75,14 +79,14 @@ export class PassengerConveyor {
         dt: number, riders: readonly Node[],
         setMoving: (index: number, moving: boolean) => void,
     ): boolean {
-        this.elapsed = Math.min(fillDuration, this.elapsed + dt);
+        this.elapsed = Math.min(this.fillDuration, this.elapsed + dt);
         const previous = this.front;
-        const filling = this.elapsed < fillDuration;
-        if (this.elapsed < entryTravelTime) this.front = this.entrySpan * (this.elapsed / entryTravelTime - 1);
-        else if (filling) this.front = (this.elapsed - entryTravelTime) / (fillDuration - entryTravelTime);
+        const filling = this.elapsed < this.fillDuration;
+        if (this.elapsed < this.entryTravelTime) this.front = this.entrySpan * (this.elapsed / this.entryTravelTime - 1);
+        else if (filling) this.front = (this.elapsed - this.entryTravelTime) / (this.fillDuration - this.entryTravelTime);
         else {
-            if (previous < 1) this.speed = 1 / (fillDuration - entryTravelTime);
-            this.speed = this.boosted ? boostedSpeed : Math.max(normalSpeed, this.speed - 0.31 * dt);
+            if (previous < 1) this.speed = 1 / (this.fillDuration - this.entryTravelTime);
+            this.speed = this.boosted ? boostedSpeed : Math.max(normalSpeed, this.speed - this.settleRate * dt);
             this.front = Math.max(1, previous + dt * this.speed);
         }
         this.exitCells.length = 0;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Replay the Level 1 acceptance route on the 1080x2400 Android profile.
+# Replay the shipped campaign from Level 1 on the 1080x2400 Android profile.
 # Usage: bash tools/replay_level_one.sh <tested-apk> <evidence-directory> [adb-serial]
 set -eu
 apk=${1:?Provide the tested APK}
@@ -14,19 +14,30 @@ adb -s "$serial" shell sha256sum "$device_apk" | tr -d '\r' > "$proof/installed.
 shasum -a 256 "$apk" > "$proof/candidate.sha256"
 test "$(cut -d ' ' -f1 "$proof/installed.sha256")" = "$(cut -d ' ' -f1 "$proof/candidate.sha256")"
 record="/sdcard/level-one-individual-$(date +%s).mp4"
-adb -s "$serial" shell "echo \$\$; exec screenrecord --time-limit 150 --size 540x1200 --bit-rate 4200000 '$record'" > "$proof/screenrecord.log" 2>&1 &
-record_pid=$!
+record_pid=$(adb -s "$serial" shell "nohup screenrecord --time-limit 150 --size 540x1200 --bit-rate 4200000 '$record' </dev/null >/dev/null 2>&1 & echo \$!" | tr -d '\r')
+printf '%s\n' "$record_pid" > "$proof/screenrecord.log"
 save_recording() {
   echo "Recorded outcome=$1"
   if [ -n "${pid:-}" ]; then adb -s "$serial" logcat -d --pid="$pid" -v raw > "$proof/e2e-runtime.log"; fi
-  recorder=$(head -1 "$proof/screenrecord.log" | tr -d '\r')
-  if [[ "$recorder" =~ ^[0-9]+$ ]] && kill -0 "$record_pid" 2>/dev/null; then
-    if adb -s "$serial" shell cat "/proc/$recorder/cmdline" | tr '\0' '\n' | rg -Fxq "$record"; then
-      adb -s "$serial" shell kill -2 "$recorder" || true
-    fi
+  if [[ "$record_pid" =~ ^[0-9]+$ ]] &&
+     adb -s "$serial" shell cat "/proc/$record_pid/cmdline" 2>/dev/null | tr '\0' '\n' | rg -Fxq "$record"; then
+    adb -s "$serial" shell kill -2 "$record_pid" || true
+    for attempt in $(seq 1 30); do
+      if ! adb -s "$serial" shell cat "/proc/$record_pid/cmdline" 2>/dev/null | tr '\0' '\n' | rg -Fxq "$record"; then break; fi
+      sleep 0.2
+    done
   fi
-  wait "$record_pid" || true
-  adb -s "$serial" pull "$record" "$proof/e2e.mp4" || true
+  for attempt in $(seq 1 3); do
+    if adb -s "$serial" exec-out cat "$record" > "$proof/e2e.mp4.part" &&
+       test -s "$proof/e2e.mp4.part" &&
+       test "$(wc -c < "$proof/e2e.mp4.part" | tr -d ' ')" = "$(adb -s "$serial" shell stat -c %s "$record" | tr -d '\r')"; then
+      mv "$proof/e2e.mp4.part" "$proof/e2e.mp4"
+      return
+    fi
+    sleep 0.3
+  done
+  echo "Incomplete recording, device file: $record" >&2
+  exit 1
 }
 trap 'save_recording "$?"' EXIT
 sleep 0.6
@@ -98,7 +109,7 @@ if rg -qF '"event":"dispatch"' "$proof/runtime-current.log"; then exit 2; fi
 tap_car B1
 sleep 0.26
 capture enter-motion
-wait_log 'boarded B1 count=2 remaining=38' 1
+wait_log '[OwnedGameplay] animate-board B1' 1
 tap_car Y1
 wait_log '"event":"parked","vehicle":"Y1"' 1
 sleep 0.20
@@ -129,6 +140,11 @@ if [[ "$scenario" != legacy ]]; then
 fi
 wait_log '[OwnedGameplay] victory-reward {"amount":20,"balance":120}' 1
 capture reward
+if [[ "$scenario" = second-failure-fixture ]] ||
+   { [[ "$scenario" = current ]] && rg -qF '"event":"enter","level":1' "$proof/runtime-current.log"; }; then
+  source "$(dirname "$0")/replay_second_board.sh"
+  exit 0
+fi
 adb -s "$serial" shell input tap 543 1691
 wait_log '[OwnedGameplay] passengers-in-ring 240 avatars=240' 2
 capture ready

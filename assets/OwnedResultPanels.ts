@@ -95,7 +95,8 @@ export class OwnedResultPanels {
     private rewardState: 'offered' | 'collecting' | 'collected' = 'offered';
     private balance = 100;
 
-    constructor(private readonly parent: Node, private readonly art: ResultArt, onReplay: () => void) {
+    constructor(private readonly parent: Node, private readonly art: ResultArt, onReplay: () => void,
+        private readonly onContinue: () => boolean) {
         this.root = this.child('Original result panels', parent);
         this.root.active = false;
         const mask = this.child('Result mask', this.root);
@@ -137,8 +138,10 @@ export class OwnedResultPanels {
             relative(source.button.labelPosition), [400, 142], 79, Color.WHITE, new Color(143, 57, 9));
         this.actionLabel.isBold = true;
         this.action.on(Node.EventType.TOUCH_END, () => {
-            if (this.rewardState === 'collected') onReplay();
-            else this.collectReward();
+            if (this.rewardState === 'collected') {
+                if (this.onContinue()) this.action.active = false;
+                else onReplay();
+            } else this.collectReward();
         });
 
         this.completeLabel = this.caption(this.root, 'Completed first level', 'Level 1 complete', [0, 0],
@@ -156,8 +159,9 @@ export class OwnedResultPanels {
         this.wallet.setSiblingIndex(this.root.children.length - 1);
     }
 
-    show(outcome: Outcome): [number, number] | null {
+    show(outcome: Outcome, level: number): [number, number] | null {
         this.outcome = outcome;
+        this.completeLabel.string = 'Level ' + level + ' complete';
         this.rewardState = 'offered';
         this.elapsed = 0;
         this.effects.reset();
@@ -246,10 +250,19 @@ export class OwnedResultPanels {
         if (fraction < 1) return;
         this.balance += firstLevelReward;
         this.rewardState = 'collected';
+        log('[OwnedGameplay] victory-reward ' + JSON.stringify({ amount: firstLevelReward, balance: this.balance }));
+        if (this.onContinue()) {
+            this.action.active = false;
+            return;
+        }
         this.completeLabel.node.active = true;
         this.actionLabel.string = 'Replay';
         this.action.active = true;
-        log('[OwnedGameplay] victory-reward ' + JSON.stringify({ amount: firstLevelReward, balance: this.balance }));
+    }
+
+    retryContinue(): void {
+        this.actionLabel.string = 'Retry';
+        this.action.active = true;
     }
 
     destroy(): void {

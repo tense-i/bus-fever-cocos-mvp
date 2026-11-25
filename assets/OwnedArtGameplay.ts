@@ -4,7 +4,7 @@ import {
     Mesh, MeshRenderer, Node, Prefab, profiler, Quat, Sprite, SpriteFrame, Texture2D,
     Tween, tween, UITransform, utils, Vec3, Vec4, view,
 } from 'cc';
-import type { Route, Vehicle } from './DispatchRound';
+import { BusLevel, BusRoute, extraRoutes, levelOne as firstLevel, levelTwo, secondPaintGain, StagedVehicle } from './BusLevels';
 import { LevelOneDispatch, levelOneBayCount, levelOneSeats } from './LevelOneDispatch';
 import {
     CarSurfaceParameters, loadOwnedArt, loadOwnedModel, originalCarMaterial, originalPassengerMaterial,
@@ -68,31 +68,22 @@ interface VehicleBoardClip {
     segments: { time: number; coefficients: [number, number, number, number] }[];
 }
 
-// Staging approximates the six positions and headings visible in the Level 1 footage.
-const fleet = [
-    { id: 'B1', route: 'teal', position: new Vec3(-0.90, 0, -2.54), yaw: 60 },
-    { id: 'Y1', route: 'amber', position: new Vec3(-0.73, 0, -3.30), yaw: -30 },
-    { id: 'Y2', route: 'amber', position: new Vec3(-0.29, 0, -3.05), yaw: -30 },
-    { id: 'B2', route: 'teal', position: new Vec3(1.04, 0, -3.40), yaw: -30 },
-    { id: 'R1', route: 'red', position: new Vec3(0.30, 0, -3.53), yaw: 60 },
-    { id: 'R2', route: 'red', position: new Vec3(0.51, 0, -3.94), yaw: 60 },
-] as const;
 const stationScale = new Vec3(0.14062501, 0.14062501, 0.14498439);
 const stagingScale = stationScale.clone().multiplyScalar(1.29);
 const vehicleBounds = new geometry.AABB(0, 1.16905, 0.01159, 1.08962, 0.98017, 2.32677);
 // The Whole BoxCollider from bus_normal_10, expressed in the staging coordinate system.
 const halfBodyWidth = 1.92 * stagingScale.x / 2;
 const halfBodyLength = 4.68043 * stagingScale.z / 2;
-type StagedVehicle = typeof fleet[number];
 
-function firstObstruction(car: StagedVehicle, ready: ReadonlySet<string>) {
+
+function firstObstruction(car: StagedVehicle, fleet: readonly StagedVehicle[], ready: ReadonlySet<string>) {
     const yaw = car.yaw * Math.PI / 180;
     const dx = Math.sin(yaw), dz = Math.cos(yaw);
     let nearest: { id: string; gap: number } | undefined;
     for (const other of fleet) {
         if (other === car || !ready.has(other.id)) continue;
-        // Level one's headings are either parallel or perpendicular.
-        const parallel = car.yaw === other.yaw;
+        // The first two boards use parallel and perpendicular parking rows.
+        const parallel = (car.yaw - other.yaw) % 180 === 0;
         const x = other.position.x - car.position.x, z = other.position.z - car.position.z;
         const across = Math.abs(x * dz - z * dx);
         if (across >= halfBodyWidth + (parallel ? halfBodyWidth : halfBodyLength)) continue;
@@ -135,7 +126,17 @@ function originalPose(node: Node, pose: Pose): void {
 
 @ccclass('OwnedArtGameplay')
 export class OwnedArtGameplay extends Component {
-    private round = new LevelOneDispatch(fleet);
+    private level: BusLevel = firstLevel;
+    private round = new LevelOneDispatch(this.level);
+    private buildActors!: () => void;
+    private sky!: Node;
+    private plane!: Node;
+    private nextTitle?: Node;
+    private loadNextArt!: () => Promise<void>;
+    private nextArt?: Promise<void>;
+    private readonly adSlots: Node[] = [];
+    private showAdMarks!: () => void;
+    private transitioning = false;
     private root!: Node;
     private ground!: Node;
     private camera!: Camera;
@@ -153,7 +154,7 @@ export class OwnedArtGameplay extends Component {
     private riders: Node[] = [];
     private riderRenderers: MeshRenderer[] = [];
     private bays: ParkingBay[] = [];
-    private seatMaterials!: Record<Route, Material>;
+    private seatMaterials!: Record<BusRoute, Material>;
     private conveyor?: PassengerConveyor;
     private vehicleDrive?: VehicleDrive;
     private introReady = false;
@@ -191,7 +192,7 @@ export class OwnedArtGameplay extends Component {
     }
 
     update(dt: number): void {
-        if (this.paused) return;
+        if (this.paused || this.transitioning) return;
         this.vehicleDrive?.update(dt);
         this.resultPanels?.update(dt);
         if (this.ready && this.conveyor) {
@@ -206,7 +207,7 @@ export class OwnedArtGameplay extends Component {
         }
         this.idle?.advance(dt);
         this.moving?.advance(dt);
-        if (this.ready && this.guideClock >= guideStart && !this.resultShown) {
+        if (this.ready && (this.tutorialComplete || this.guideClock >= guideStart) && !this.resultShown) {
             this.boardingClock += dt;
             if (this.round.boarded < this.round.consumed) this.boarding?.advance(dt);
             this.playAvailableBoarding();
@@ -230,6 +231,8 @@ export class OwnedArtGameplay extends Component {
     onDestroy(): void {
         input.off(Input.EventType.TOUCH_END, this.onTouch, this);
         this.stopMoves();
+        if (this.sky) Tween.stopAllByTarget(this.sky);
+        if (this.plane) Tween.stopAllByTarget(this.plane);
         this.vehicleDrive?.destroy();
         this.resultPanels?.destroy();
         this.root.destroy();
@@ -310,7 +313,7 @@ export class OwnedArtGameplay extends Component {
             teal: this.badgeMaterial(badgeMap, new Vec4(0.12, 0.60, 0.92, 1)),
             amber: this.badgeMaterial(badgeMap, new Vec4(0.96, 0.67, 0.14, 1)),
             red: this.badgeMaterial(badgeMap, new Vec4(0.93, 0.20, 0.28, 1)),
-        };
+        } as Record<BusRoute, Material>;
         const passengerSurfaces = passengerData.json as unknown as PassengerSurfaceParameters;
         const riderMaterials = {
             teal: originalPassengerMaterial(passengerEffect, passengerSurfaces, passengerSurfaces.routes.teal),
@@ -330,52 +333,106 @@ export class OwnedArtGameplay extends Component {
         this.createScene(poses, background, parking, backdropMaterial, pavementMaterial, levelOne, vipMark, vipMaterial, badge);
         this.vehicleDrive = new VehicleDrive(this.ground, vehicleSmoke);
         this.createConveyor(levelOne, roadMaterial);
-        fleet.forEach((vehicle) => {
-            const car = new Node(vehicle.id);
-            car.parent = this.ground;
-            car.setScale(stagingScale);
-            const bodyAndWheels = new Node('Bus_001 and Wheel_001');
-            bodyAndWheels.parent = car;
-            const bodyNode = this.model(body, bodyAndWheels, busMaterials[vehicle.route]);
-            this.model(wheel, bodyAndWheels, busMaterials[vehicle.route]);
-            const arrowNode = this.model(arrow, bodyNode, arrowMaterial);
-            originalPose(arrowNode, arrowPose);
-            const outline = this.model(body, bodyAndWheels, highlight);
-            outline.setScale(1.13, 1.08, 1.07);
-            outline.active = false;
-            this.vehicleModels.set(vehicle.id, { bodyAndWheels, arrow: arrowNode, outline });
-            const shadow = this.model(carShadow, car, carShadowMaterial);
-            this.model(carShadow, shadow, carShadowMaterial);
-            this.cars.set(vehicle.id, car);
-        });
-        this.riders = this.round.queue.map((route) => {
-            const material = riderMaterials[route];
-            const rider = new Node('Passenger facing');
-            rider.parent = this.ground;
-            const pose = new Node('Passenger pose');
-            pose.parent = rider;
-            originalPose(pose, shadows.passengerRoot);
-            const body = this.model(passenger, pose, material);
-            // The indexed VAT GLB reflects Z. Other prefab meshes reflect X.
-            body.setRotationFromEuler(0, 180, 0);
-            originalPose(this.model(passengerShadow, pose, passengerShadowMaterial), shadows.passenger.pose);
-            const renderer = body.getComponentInChildren(MeshRenderer)!;
-            if (!this.idle) {
-                const frames = new OwnedPassengerVat(renderer.mesh!, vat.buffer());
-                this.idle = frames.play(clips.idle);
-                this.moving = frames.play(clips.move);
-                this.boarding = frames.play(clips.board);
-            }
-            renderer.mesh = this.idle.mesh;
-            this.riderRenderers.push(renderer);
-            return rider;
-        });
+        this.buildActors = () => {
+            this.level.fleet.forEach((vehicle) => {
+                const car = new Node(vehicle.id);
+                car.parent = this.ground;
+                car.setScale(stagingScale);
+                const bodyAndWheels = new Node('Bus_001 and Wheel_001');
+                bodyAndWheels.parent = car;
+                const bodyNode = this.model(body, bodyAndWheels, (busMaterials as Record<BusRoute, Material>)[vehicle.route]);
+                this.model(wheel, bodyAndWheels, (busMaterials as Record<BusRoute, Material>)[vehicle.route]);
+                const arrowNode = this.model(arrow, bodyNode, arrowMaterial);
+                originalPose(arrowNode, arrowPose);
+                const outline = this.model(body, bodyAndWheels, highlight);
+                outline.setScale(1.13, 1.08, 1.07);
+                outline.active = false;
+                this.vehicleModels.set(vehicle.id, { bodyAndWheels, arrow: arrowNode, outline });
+                const shadow = this.model(carShadow, car, carShadowMaterial);
+                this.model(carShadow, shadow, carShadowMaterial);
+                this.cars.set(vehicle.id, car);
+            });
+            this.riders = this.round.queue.map((route, index) => {
+                const material = (riderMaterials as Record<BusRoute, Material>)[route];
+                const existing = this.riders[index];
+                if (existing) {
+                    const renderer = this.riderRenderers[index];
+                    renderer.setSharedMaterial(material, 0);
+                    renderer.mesh = this.idle!.mesh;
+                    return existing;
+                }
+                const rider = new Node('Passenger facing');
+                rider.parent = this.ground;
+                const pose = new Node('Passenger pose');
+                pose.parent = rider;
+                originalPose(pose, shadows.passengerRoot);
+                const body = this.model(passenger, pose, material);
+                // The indexed VAT GLB reflects Z. Other prefab meshes reflect X.
+                body.setRotationFromEuler(0, 180, 0);
+                originalPose(this.model(passengerShadow, pose, passengerShadowMaterial), shadows.passenger.pose);
+                const renderer = body.getComponentInChildren(MeshRenderer)!;
+                if (!this.idle) {
+                    const frames = new OwnedPassengerVat(renderer.mesh!, vat.buffer());
+                    this.idle = frames.play(clips.idle);
+                    this.moving = frames.play(clips.move);
+                    this.boarding = frames.play(clips.board);
+                }
+                renderer.mesh = this.idle.mesh;
+                this.riderRenderers.push(renderer);
+                return rider;
+            });
+        };
+        this.buildActors();
         this.levelTitle = this.makeImage('Original Level_Text', level);
         this.positionHud(this.levelTitle, this.hud.level);
         this.createOnboardingHud(...onboardingArt);
-        this.resultPanels = new OwnedResultPanels(this.node, resultArt, () => this.reset('restart'));
+        this.resultPanels = new OwnedResultPanels(this.node, resultArt, () => this.reset('restart'), () => this.advanceLevel());
         this.replayNode = this.makeImage('Original replay icon', replay);
         this.replayNode.on(Node.EventType.TOUCH_END, () => this.reset('restart'));
+        this.loadNextArt = async () => {
+            const [secondArt, secondPaint, skyMap, planeMap, secondTitle, adMark, adMap] = await Promise.all([
+                loadOwnedArt('level-two-art', JsonAsset),
+                Promise.all(extraRoutes.map(route => loadOwnedArt('bus-' + route + '-map/texture', Texture2D))),
+                loadOwnedArt('transition-sky/texture', Texture2D), loadOwnedArt('transition-plane/texture', Texture2D),
+                loadOwnedArt('level-two-title/texture', Texture2D), loadOwnedModel('parking-add'),
+                loadOwnedArt('parking-ad-map/texture', Texture2D),
+            ]);
+            if (!isValid(this, true)) return;
+            const second = secondArt.json as {
+                cars: Record<typeof extraRoutes[number], CarSurfaceParameters['orange']>;
+                riders: Record<typeof extraRoutes[number], [number, number, number, number]>;
+            };
+            for (const [index, route] of extraRoutes.entries()) {
+                const paint = originalCarMaterial(carEffect, secondPaint[index], surfaces, second.cars[route]);
+                paint.setProperty('displayGain', new Vec4(...secondPaintGain[route], 1));
+                (busMaterials as Record<BusRoute, Material>)[route] = paint;
+            }
+            for (const route of extraRoutes) {
+                const color = second.riders[route];
+                (riderMaterials as Record<BusRoute, Material>)[route] = originalPassengerMaterial(passengerEffect, passengerSurfaces,
+                    { ...passengerSurfaces.routes.teal, baseColor: color });
+                this.seatMaterials[route] = this.badgeMaterial(badgeMap, new Vec4(...color));
+            }
+            const adMaterial = originalTextureMaterial(adMap);
+            this.nextTitle = this.makeImage('Original Level 2 title', secondTitle);
+            this.positionHud(this.nextTitle, this.hud!.level);
+            this.nextTitle.active = false;
+            this.sky = this.makeImage('Original sky transition', skyMap);
+            this.plane = this.makeImage('Original transition aircraft', planeMap);
+            this.plane.parent = this.sky;
+            this.sky.active = false;
+            this.materials.push(adMaterial);
+            for (const route of extraRoutes) {
+                this.materials.push((busMaterials as Record<BusRoute, Material>)[route],
+                    (riderMaterials as Record<BusRoute, Material>)[route], this.seatMaterials[route]);
+            }
+            this.showAdMarks = () => {
+                for (const bay of this.adSlots) {
+                    bay.getComponentsInChildren(MeshRenderer).forEach(r => r.setSharedMaterial(adMaterial, 0));
+                    this.model(adMark, bay, adMaterial);
+                }
+            };
+        };
         this.ready = true;
         log(`[OwnedGameplay] vat idle=${clips.idle.frameStart}+${clips.idle.frameCount} move=${clips.move.frameStart}+${clips.move.frameCount} board=${clips.board.frameStart}+${clips.board.frameCount}`);
         this.reset('enter');
@@ -432,7 +489,10 @@ export class OwnedArtGameplay extends Component {
             const bay = this.model(parking, parkingRoot, spotMaterial);
             bay.name = pose.name;
             originalPose(bay, pose);
-            if (index >= levelOneBayCount) return;
+            if (index >= levelOneBayCount) {
+                this.adSlots.push(bay);
+                return;
+            }
             const badge = this.model(seatBadge, bay, this.seatMaterials.teal);
             originalPose(badge, seatBadgePose);
             const badgeLabel = this.label(String(levelOneSeats), 0, 17);
@@ -496,7 +556,7 @@ export class OwnedArtGameplay extends Component {
         return material;
     }
 
-    private setSeatBadge(slot: number, route: Route, remaining: number): void {
+    private setSeatBadge(slot: number, route: BusRoute, remaining: number): void {
         const { badge, badgeLabel } = this.bays[slot];
         if (remaining === levelOneSeats) {
             badge.getComponentInChildren(MeshRenderer)!.setSharedMaterial(this.seatMaterials[route], 0);
@@ -510,14 +570,14 @@ export class OwnedArtGameplay extends Component {
     }
 
     private onTouch(event: EventTouch): void {
-        if (!this.ready || this.guideClock < guideStart || this.paused || this.round.outcome !== 'playing') return;
+        if (!this.ready || this.transitioning || (!this.tutorialComplete && this.guideClock < guideStart) || this.paused || this.round.outcome !== 'playing') return;
         const { x, y } = event.getLocation();
         const ray = this.camera.screenPointToRay(x, y);
         let best: StagedVehicle | undefined;
         let nearest = Infinity;
         const endpoint = Vec3.add(new Vec3(), ray.o, ray.d);
         const localRay = new geometry.Ray();
-        for (const vehicle of fleet) {
+        for (const vehicle of this.level.fleet) {
             if (!this.round.ready.has(vehicle.id)) continue;
             const car = this.cars.get(vehicle.id)!;
             car.inverseTransformPoint(localRay.o, ray.o);
@@ -539,7 +599,7 @@ export class OwnedArtGameplay extends Component {
         }
         if (this.contacting.has(vehicle.id) || this.round.bays.indexOf(null) < 0) return;
         const car = this.cars.get(vehicle.id)!;
-        const obstruction = firstObstruction(vehicle, this.round.ready);
+        const obstruction = firstObstruction(vehicle, this.level.fleet, this.round.ready);
         if (obstruction) {
             this.contacting.add(vehicle.id);
             const heading = Vec3.transformQuat(new Vec3(), Vec3.UNIT_Z, car.rotation);
@@ -559,8 +619,8 @@ export class OwnedArtGameplay extends Component {
         if (slot < 0) return;
         this.report('dispatch', vehicle.id);
         const bay = this.bays[slot];
-        tween(car).to(0.56, { scale: stationScale }, { easing: 'smooth' }).start();
-        this.vehicleDrive!.enter(car, bay.position, bay.rotation, () => {
+        tween(car).to(this.level.driveInSeconds, { scale: stationScale }, { easing: 'smooth' }).start();
+        this.vehicleDrive!.enter(car, bay.position, bay.rotation, this.level.driveInSeconds, () => {
             this.vehicleModels.get(vehicle.id)!.arrow.active = false;
             const belt = this.conveyor!;
             this.round.park(slot);
@@ -586,7 +646,11 @@ export class OwnedArtGameplay extends Component {
         }
         const outcome = this.round.outcome;
         if (outcome !== 'playing') {
-            if (outcome === 'won') this.tutorialComplete = true;
+            if (outcome === 'won') {
+                this.tutorialComplete = true;
+                if (this.level === firstLevel) void this.prepareSecondLevel().catch(error =>
+                    log('[OwnedGameplay] level-prefetch-error ' + String(error)));
+            }
             this.resultShown = true;
             this.renderStatus();
             this.report(outcome);
@@ -619,7 +683,7 @@ export class OwnedArtGameplay extends Component {
         });
     }
 
-    private movePassengerToSeat(index: number, slot: number, vehicle: Vehicle): void {
+    private movePassengerToSeat(index: number, slot: number, vehicle: StagedVehicle): void {
         const rider = this.riders[index];
         const renderer = this.riderRenderers[index];
         renderer.mesh = this.boarding!.mesh;
@@ -648,10 +712,10 @@ export class OwnedArtGameplay extends Component {
         const car = this.cars.get(vehicleId)!;
         const stillInPlay = this.round.ready.size + this.round.bays.filter(bay => bay && bay.stage !== 'leaving').length;
         this.conveyor!.boostForRemainingVehicles(stillInPlay);
+        // StateOutStation.OnEnter releases the ParkingSpot before the car drives away.
+        this.round.vacate(slot);
+        this.report('vacated', vehicleId);
         this.vehicleDrive!.exit(car, () => {
-            this.round.vacate(slot);
-            this.report('vacated', vehicleId);
-        }, () => {
             car.active = false;
             this.round.depart(vehicleId);
             this.report('departed', vehicleId);
@@ -659,10 +723,67 @@ export class OwnedArtGameplay extends Component {
         });
     }
 
-    private reset(event: 'enter' | 'restart'): void {
-        if (!this.ready) return;
+    private prepareSecondLevel(): Promise<void> {
+        if (!this.nextArt) this.nextArt = this.loadNextArt().catch(error => {
+            this.nextArt = undefined;
+            throw error;
+        });
+        return this.nextArt;
+    }
+
+    private advanceLevel(): boolean {
+        if (this.level !== firstLevel) return false;
+        if (this.transitioning) return true;
+        this.transitioning = true;
+        void this.prepareSecondLevel().then(() => {
+            if (isValid(this, true)) this.playTransition();
+        }).catch(error => {
+            if (!isValid(this, true)) return;
+            this.transitioning = false;
+            this.resultPanels?.retryContinue();
+            log('[OwnedGameplay] level-load-error ' + String(error));
+        });
+        return true;
+    }
+
+    private playTransition(): void {
+        const canvas = this.node.getComponent(UITransform)!;
+        const screen = view.getFrameSize();
+        const height = canvas.width * screen.height / screen.width;
+        this.sky.getComponent(UITransform)!.setContentSize(canvas.width, height + 2);
+        this.sky.setPosition(0, height, 0);
+        this.sky.active = true;
+        this.plane.getComponent(UITransform)!.setContentSize(canvas.width * 0.63, canvas.width * 0.42);
+        this.plane.getComponent(UITransform)!.setAnchorPoint(0.83, 0.80);
+        this.plane.setPosition(-canvas.width * 0.18, height * 0.35, 0);
+        tween(this.plane).to(2.2, {position: new Vec3(canvas.width * 0.52, height * 0.58, 0)}).start();
+        log('[OwnedGameplay] sky-transition 1->2');
+        tween(this.sky).to(1.0, { position: new Vec3(0, 0, 0) }, { easing: 'quadOut' })
+            .call(() => {
+                this.stopMoves();
+                for (const actor of this.cars.values()) {
+                    actor.active = false;
+                    actor.destroy();
+                }
+                this.cars.clear();
+                this.vehicleModels.clear();
+                this.level = levelTwo;
+                this.showAdMarks();
+                this.reset('next-level');
+            }).delay(0.60).to(0.60, { position: new Vec3(0, -height, 0) }, { easing: 'quadIn' })
+            .call(() => {
+                this.sky.active = false;
+                this.transitioning = false;
+                this.reportTapCenters();
+                log('[OwnedGameplay] level-playable 2');
+            }).start();
+    }
+
+    private reset(event: 'enter' | 'restart' | 'next-level'): void {
+        if (!this.ready || (this.transitioning && event !== 'next-level')) return;
         this.stopMoves();
-        this.round = new LevelOneDispatch(fleet);
+        this.round = new LevelOneDispatch(this.level);
+        if (event === 'next-level') this.buildActors();
         this.paused = false;
         this.introReady = false;
         this.guideClock = 0;
@@ -672,7 +793,7 @@ export class OwnedArtGameplay extends Component {
         this.boarding?.reset();
         this.idle?.reset();
         this.moving?.reset();
-        fleet.forEach((vehicle) => {
+        this.level.fleet.forEach((vehicle) => {
             const car = this.cars.get(vehicle.id)!;
             car.active = true;
             car.setScale(stagingScale);
@@ -682,7 +803,7 @@ export class OwnedArtGameplay extends Component {
             bodyAndWheels.setScale(1, 1, 1);
             arrow.active = true;
         });
-        this.conveyor!.reset(this.riders);
+        this.conveyor!.reset(this.riders, this.level.entrySeconds, this.level.fillSeconds, this.level.settleRate);
         this.bays.forEach(({ badge, badgeLabel }) => {
             badge.active = badgeLabel.node.active = false;
         });
@@ -740,8 +861,8 @@ export class OwnedArtGameplay extends Component {
         this.positionHud(this.guideCaption.node, { anchor: [0.5, 0.22], position: [0, 7], size: [870, 175] });
     }
 
-    private nextGuideVehicle(): Vehicle | undefined {
-        return fleet.find((vehicle) => this.round.ready.has(vehicle.id));
+    private nextGuideVehicle(): StagedVehicle | undefined {
+        return this.level.fleet.find((vehicle) => this.round.ready.has(vehicle.id));
     }
 
     private updateGuide(dt: number): void {
@@ -751,7 +872,7 @@ export class OwnedArtGameplay extends Component {
         this.vehicleModels.forEach(({ outline }, id) => { outline.active = show && id === next?.id; });
         this.guideHand!.active = show;
         this.guideCircle!.active = show;
-        this.guideCaption!.node.active = show && this.round.ready.size === fleet.length;
+        this.guideCaption!.node.active = show && this.round.ready.size === this.level.fleet.length;
         if (!this.guideCard!.active && this.guideCaption!.node.active) log('[OwnedGameplay] first-guide-visible');
         this.guideCard!.active = this.guideCaption!.node.active;
         if (!show || !next) return;
@@ -770,7 +891,7 @@ export class OwnedArtGameplay extends Component {
     }
 
     private togglePause(): void {
-        if (!this.ready || this.round.outcome !== 'playing') return;
+        if (!this.ready || this.transitioning || this.round.outcome !== 'playing') return;
         this.paused = !this.paused;
         const control = this.paused ? Tween.pauseAllByTarget : Tween.resumeAllByTarget;
         this.cars.forEach((car) => control(car));
@@ -784,11 +905,12 @@ export class OwnedArtGameplay extends Component {
     private renderStatus(): void {
         const outcome = this.round.outcome;
         const showHud = outcome !== 'lost';
-        this.levelTitle!.active = showHud;
+        this.levelTitle!.active = showHud && this.level.number === 1;
+        if (this.nextTitle) this.nextTitle.active = showHud && this.level.number === 2;
         this.pauseNode!.active = showHud;
         this.propNodes.forEach((node) => { node.active = showHud; });
         this.status.node.active = false;
-        const replayPosition = this.resultPanels?.show(outcome);
+        const replayPosition = this.resultPanels?.show(outcome, this.level.number);
         this.replayNode!.active = outcome !== 'won';
         if (replayPosition) {
             this.replayNode!.setPosition(...replayPosition, 0);
@@ -840,7 +962,7 @@ export class OwnedArtGameplay extends Component {
 
     private report(event: string, vehicle?: string): void {
         log('[OwnedGameplay] ' + JSON.stringify({
-            event, vehicle, boarded: this.round.boarded, outcome: this.round.outcome,
+            event, vehicle, level: this.level.number, boarded: this.round.boarded, outcome: this.round.outcome,
             ready: Array.from(this.round.ready), bays: this.round.bays.flatMap((bay, slot) => bay ? [{
                 slot, id: bay.vehicle.id, seatsLeft: bay.seatsLeft, stage: bay.stage,
             }] : []),
@@ -849,7 +971,7 @@ export class OwnedArtGameplay extends Component {
 
     private reportTapCenters(): void {
         const screen = view.getFrameSize();
-        const values = fleet.map(({ id }) => {
+        const values = this.level.fleet.map(({ id }) => {
             const car = this.cars.get(id)!;
             const center = car.worldPosition.clone().add3f(0, 0.14, 0);
             const point = this.camera.worldToScreen(center);

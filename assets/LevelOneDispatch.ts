@@ -1,4 +1,5 @@
-import type { Outcome, Route, Vehicle } from './DispatchRound';
+import type { Outcome } from './DispatchRound';
+import type { BusLevel, BusRoute, StagedVehicle } from './BusLevels';
 
 interface BoardingGroup {
     members: number[];
@@ -7,7 +8,7 @@ interface BoardingGroup {
 }
 
 interface Bay {
-    vehicle: Vehicle;
+    vehicle: StagedVehicle;
     seatsLeft: number;
     reserved: number;
     waitingGroups: BoardingGroup[];
@@ -21,18 +22,17 @@ export const passengerGroupSize = 4;
 export class LevelOneDispatch {
     readonly ready: Set<string>;
     readonly bays: (Bay | null)[] = Array.from({ length: levelOneBayCount }, () => null);
-    readonly queue: Route[] = [
-        ...this.groups('teal', 40), ...this.groups('red', 40), ...this.groups('teal', 40),
-        ...this.groups('amber', 40), ...this.groups('red', 40), ...this.groups('amber', 40),
-    ];
-    readonly totalPassengers = this.queue.length;
+    readonly queue: BusRoute[];
+    readonly totalPassengers: number;
     boarded = 0;
     consumed = 0;
     private blocked = false;
     private readonly exiting = new Set<string>();
 
-    constructor(vehicles: readonly Vehicle[]) {
-        this.ready = new Set(vehicles.map(({ id }) => id));
+    constructor(level: BusLevel) {
+        this.queue = level.waves.flatMap(([route, count]) => Array<BusRoute>(count).fill(route));
+        this.totalPassengers = this.queue.length;
+        this.ready = new Set(level.fleet.map(({ id }) => id));
     }
 
     get outcome(): Outcome {
@@ -41,7 +41,7 @@ export class LevelOneDispatch {
         return 'playing';
     }
 
-    dispatch(vehicle: Vehicle): number {
+    dispatch(vehicle: StagedVehicle): number {
         const slot = this.bays.indexOf(null);
         if (slot < 0 || this.outcome !== 'playing' || !this.ready.delete(vehicle.id)) return -1;
         this.bays[slot] = { vehicle, seatsLeft: levelOneSeats, reserved: 0, stage: 'entering', waitingGroups: [] };
@@ -61,11 +61,11 @@ export class LevelOneDispatch {
             && !cells.some(rider => rider >= 0 && this.boardingSlot(this.queue[rider]) >= 0);
     }
 
-    boardingSlot(route: Route): number {
+    boardingSlot(route: BusRoute): number {
         return this.bays.findIndex((_, index) => this.canReserve(index, route));
     }
 
-    canReserve(slot: number, route: Route): boolean {
+    canReserve(slot: number, route: BusRoute): boolean {
         const bay = this.bays[slot];
         return bay?.stage === 'parked' && bay.vehicle.route === route && bay.seatsLeft - bay.reserved >= passengerGroupSize;
     }
@@ -95,7 +95,4 @@ export class LevelOneDispatch {
         this.exiting.delete(vehicleId);
     }
 
-    private groups(route: Route, passengers: number): Route[] {
-        return Array<Route>(passengers).fill(route);
-    }
 }

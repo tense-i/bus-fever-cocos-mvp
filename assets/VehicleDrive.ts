@@ -40,7 +40,7 @@ export class VehicleDrive {
         });
     }
 
-    enter(car: Node, destination: Vec3, bayRotation: Quat, done: () => void): void {
+    enter(car: Node, destination: Vec3, bayRotation: Quat, duration: number, done: () => void): void {
         const start = car.position.clone();
         const heading = this.heading(car.rotation);
         // The authored slot axis points out of the bay. The vehicle faces into the bay.
@@ -53,12 +53,13 @@ export class VehicleDrive {
         const curveStart = lead.clone().add(heading.clone().multiplyScalar(0.29));
         const curveEnd = destination.clone().subtract(intoBay.clone().multiplyScalar(0.73));
         this.startEmission(car);
-        tween(car).then(this.line(car, start, lead, 0.22))
-            .then(this.segment(car, lead, curveStart, curveEnd, destination, 0.34))
+        const leadTime = duration * (0.22 / 0.56);
+        tween(car).then(this.line(car, start, lead, leadTime))
+            .then(this.segment(car, lead, curveStart, curveEnd, destination, duration - leadTime))
             .call(() => this.finish(car, 'enter', done)).start();
     }
 
-    exit(car: Node, onLane: () => void, done: () => void): void {
+    exit(car: Node, done: () => void): void {
         const start = car.position.clone();
         const reverseHeading = this.heading(car.rotation).multiplyScalar(-1);
         const back = start.clone().add(reverseHeading.clone().multiplyScalar(0.52));
@@ -69,7 +70,6 @@ export class VehicleDrive {
         this.startEmission(car);
         tween(car).then(this.line(car, start, back, 0.16, true))
             .then(this.segment(car, back, curveStart, curveEnd, lane, 0.23, true))
-            .call(onLane)
             .delay(0.10)
             .then(this.line(car, lane, offscreen, 0.48, false, 'quadIn'))
             .call(() => this.finish(car, 'exit', done)).start();

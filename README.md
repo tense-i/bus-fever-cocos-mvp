@@ -1,18 +1,18 @@
 # Bus Fever Cocos MVP
 
-基于 Cocos Creator 3.8.8 的可玩首关工程。项目包含 TypeScript 源码、场景、Android 构建配置，以及运行所需的模型、贴图和动画资源。
+基于 Cocos Creator 3.8.8 的可连续游玩前两关的工程。项目包含 TypeScript 源码、场景、Android 构建配置，以及运行所需的模型、贴图和动画资源。
 
 ## 运行
 
 1. 安装 Cocos Creator 3.8.8，导入仓库根目录。
 2. 在资源面板打开 `assets/OwnedArtGameplay.scene`，启动预览。
-3. 等乘客进入环道后，按颜色发车。满员车辆会离场，最后一辆车离场后进入胜利结算。
+3. 等乘客进入环道后，按颜色发车。满员车辆会离场，最后一辆车离场后进入胜利结算。首关点击 Next 领取奖励后会经过飞机与天空转场，自动进入第二关。第二关结算后可以重玩。
 
 ## 构建 Android
 
 在 Creator 构建面板选 Android，启动场景选 `OwnedArtGameplay`，ABI 选 `arm64-v8a`，使用调试签名。仓库根目录的 `android-build.json` 提供这套构建配置。SDK、NDK 和 JDK 使用本机 Creator 配置。 早期二维场景可用 `android-depot-baseline.json` 单独构建。
 
-当前版本已在 Android 15 ARM64 模拟器验证并行进站、240 人登车、六车离场、通关奖励、受阻回退、暂停与重开。行车曲线和部分动画时序依据首关录像拟合，仍在逐项对照。
+Android 回放覆盖两关连续进场、720 人登车、18 辆车满载离场、两个奖励、受阻回退、暂停和当前关重开。行车曲线和部分动画时序依据首关录像拟合，仍在逐项对照。
 
 ## Android 整关验收
 
@@ -25,7 +25,7 @@ adb -s emulator-5586 install -r "$apk"
 bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586
 ```
 
-首次进入首关时，原提示卡、手势与高亮指出目标车，点错目标会被拦截。环道使用原 Prefab 的 39 个位置并以四人为组运行，空位经过右上入口时补入下一组。匹配的组经过出口时预留四席，逐人到车后扣减座位。当场内剩四辆车时，环道直接切换到尾段速度。首辆和末辆红车均可复用左侧第一个普通车位。完成首关后的会话内重玩采用自由调度。
+首次进入首关时，原提示卡、手势与高亮指出目标车，点错目标会被拦截。环道使用原 Prefab 的 39 个位置并以四人为组运行，空位经过右上入口时补入下一组。匹配的组经过出口时预留四席，逐人到车后扣减座位。当场内剩四辆车时，环道直接切换到尾段速度。首辆和末辆红车均可复用左侧第一个普通车位。第二关直接自由调度，同一会话的金币余额随关卡继承。
 
 首关的两辆蓝车分别挡住同侧的两辆黄车或红车。进入自由重玩后，点击受阻车辆会前移至接触位置再退回，保留原有车位和乘客状态。挡车关系按录像摆位、车头方向与原车身碰撞盒计算。原版录像只覆盖成功发车路线。环道满位时会检查整圈的可登车乘客，并等待正在进行的登车结束。验证失败重开时另用十组蓝色乘客占满环道、前四辆车均为红色或黄色的测试关。
 
@@ -39,4 +39,12 @@ bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586
 python3 tools/replay_reference_timing.py "$(command -v adb)" emulator-5586 "$apk" "$evidence/reference"
 ```
 
-胜利面板按原动画先进入标题、人物和烟花，再显示奖励与按钮。九枚旋转金币飞向钱包，20 枚奖励按到账进度更新。首关结算后可重玩。Android 整关回放同时保留胜利画面、收币中途和到账截图。素材转换命令为 `python3 tools/export_victory_effects.py base.apk assets/resources/owned-art`，需要 UnityPy 和 Pillow。烟花使用从原贴图和粒子参数烘焙的序列帧，金币使用原包的 4×4 旋转图集。
+胜利面板按原动画先进入标题、人物和烟花，再显示奖励与按钮。九枚旋转金币飞向钱包，每关 20 枚奖励按到账进度更新。Android 整关回放同时保留胜利画面、收币中途和到账截图。素材转换命令为 `python3 tools/export_victory_effects.py base.apk assets/resources/owned-art`，需要 UnityPy 和 Pillow。烟花使用从原贴图和粒子参数烘焙的序列帧，金币使用原包的 4×4 旋转图集。
+
+## 第二关
+
+停车场有两列车阵，共十二辆。上方两辆紫车朝右，中排两辆绿车朝左，其余八辆朝上；车头前方有车时，车辆前移接触后退回。四个普通车位按空位顺序预订，满员车开始离场时腾位。每辆车载 40 人，合计 480 人。
+
+第二关的紫、橙、粉、绿车漆和乘客颜色、天空、飞机、云、加号车位及关卡标题均取自原 APK。关卡摆位、颜色波次和部分时序按首关之后的同一段录像拟合。三个额外车位显示原加号美术，广告解锁尚待后续批次。关卡进度目前按会话维护。
+
+运行 `bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586` 会从首关直接测试到第二关结算，核对十二次发车及实际停车位、两关逐席计数、钱包 100 → 120 → 140、碰撞回退、暂停和重开。美术源输入为 `base.apk`，有 UnityPy、Pillow 和 assimp 的环境可以执行 `python3 tools/export_level_two_art.py base.apk assets/resources/owned-art` 复现本批原素材导入。
