@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "45020968-5bdb-411a-9ed3-795739efc0da",
+  "files": [],
+  "subMetas": {
+    "0707c": {
+      "importer": "gltf-mesh",
+      "uuid": "45020968-5bdb-411a-9ed3-795739efc0da@0707c",
+      "displayName": "",
+      "id": "0707c",
+      "name": "Van_FakeShadow_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 2
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "45020968-5bdb-411a-9ed3-795739efc0da@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "984e2": {
+      "importer": "gltf-scene",
+      "uuid": "45020968-5bdb-411a-9ed3-795739efc0da@984e2",
+      "displayName": "",
+      "id": "984e2",
+      "name": "van-shadow.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "45020968-5bdb-411a-9ed3-795739efc0da@0707c"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "45020968-5bdb-411a-9ed3-795739efc0da@ea6e2"
+      ],
+      "scenes": [
+        "45020968-5bdb-411a-9ed3-795739efc0da@984e2"
+      ]
+    }
+  }
+}

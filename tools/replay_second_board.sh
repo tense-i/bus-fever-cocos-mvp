@@ -5,6 +5,14 @@ wait_log '[OwnedGameplay] level-playable 2' 1
 sed -n 's/^.*\[OwnedGameplay\] tap-centers //p' "$proof/runtime-current.log" | tail -1 > "$proof/tap-centers.json"
 cp "$proof/tap-centers.json" "$proof/second-centers.json"
 capture second-grid
+if rg -qF '[OwnedGameplay] campaign boards=3' "$proof/runtime-current.log"; then
+  for pair in 'V1 V2' 'O1 V1' 'V3 V1' 'G2 G1'; do
+    read -r car blocker <<< "$pair"
+    tap_car "$car"
+    wait_log "[OwnedGameplay] contact $car $blocker" 1
+    wait_log "[OwnedGameplay] returned $car" 1
+  done
+fi
 if [[ "$scenario" = second-failure-fixture ]]; then
   wait_log '[OwnedGameplay] passengers-in-ring 480 avatars=480' 1
   for car in V2 V1 O1 O2; do
@@ -45,6 +53,10 @@ capture second-won
 adb -s "$serial" shell 'input tap 543 1691; input tap 543 1691'
 wait_log '[OwnedGameplay] victory-reward {"amount":20,"balance":140}' 1
 capture second-reward
+if rg -qF '[OwnedGameplay] campaign boards=3' "$proof/runtime-current.log"; then
+  source "$(dirname "$0")/replay_third_board.sh"
+  exit 0
+fi
 adb -s "$serial" shell input tap 543 1691
 wait_log '"event":"restart","level":2' 1
 wait_log '[OwnedGameplay] passengers-in-ring 480 avatars=480' 2

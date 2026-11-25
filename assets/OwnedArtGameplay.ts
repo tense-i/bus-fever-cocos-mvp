@@ -4,15 +4,16 @@ import {
     Mesh, MeshRenderer, Node, Prefab, profiler, Quat, Sprite, SpriteFrame, Texture2D,
     Tween, tween, UITransform, utils, Vec3, Vec4, view,
 } from 'cc';
-import { BusLevel, BusRoute, extraRoutes, levelOne as firstLevel, levelTwo, secondPaintGain, StagedVehicle } from './BusLevels';
+import { AuthoredBoard, makeThirdLevel, vehicleSeats, BusLevel, BusRoute, extraRoutes, levelOne as firstLevel, levelTwo, secondPaintGain, StagedVehicle } from './BusLevels';
 import { LevelOneDispatch, levelOneBayCount, levelOneSeats } from './LevelOneDispatch';
 import {
     CarSurfaceParameters, loadOwnedArt, loadOwnedModel, originalCarMaterial, originalPassengerMaterial,
     originalStageMaterial, originalTextureMaterial, OwnedPassengerPlayback, OwnedPassengerVat, PassengerClips,
     PassengerSurfaceParameters,
 } from './OwnedArtAssets';
-import { loadResultArt, OwnedResultPanels } from './OwnedResultPanels';
+import { loadResultArt, OwnedResultPanels, RatingLayout } from './OwnedResultPanels';
 import { ConveyorPaths, PassengerConveyor } from './PassengerConveyor';
+import { distanceToBlocker, VehicleFootprint } from './VehicleFootprint';
 import { VehicleDrive } from './VehicleDrive';
 
 const { ccclass } = _decorator;
@@ -69,31 +70,22 @@ interface VehicleBoardClip {
 }
 
 const stationScale = new Vec3(0.14062501, 0.14062501, 0.14498439);
-const stagingScale = stationScale.clone().multiplyScalar(1.29);
 const vehicleBounds = new geometry.AABB(0, 1.16905, 0.01159, 1.08962, 0.98017, 2.32677);
-// The Whole BoxCollider from bus_normal_10, expressed in the staging coordinate system.
-const halfBodyWidth = 1.92 * stagingScale.x / 2;
-const halfBodyLength = 4.68043 * stagingScale.z / 2;
-
-
-function firstObstruction(car: StagedVehicle, fleet: readonly StagedVehicle[], ready: ReadonlySet<string>) {
-    const yaw = car.yaw * Math.PI / 180;
-    const dx = Math.sin(yaw), dz = Math.cos(yaw);
-    let nearest: { id: string; gap: number } | undefined;
-    for (const other of fleet) {
-        if (other === car || !ready.has(other.id)) continue;
-        // The first two boards use parallel and perpendicular parking rows.
-        const parallel = (car.yaw - other.yaw) % 180 === 0;
-        const x = other.position.x - car.position.x, z = other.position.z - car.position.z;
-        const across = Math.abs(x * dz - z * dx);
-        if (across >= halfBodyWidth + (parallel ? halfBodyWidth : halfBodyLength)) continue;
-        const forward = x * dx + z * dz;
-        if (forward <= 0) continue;
-        const gap = Math.max(0, forward - halfBodyLength - (parallel ? halfBodyLength : halfBodyWidth));
-        if (!nearest || gap < nearest.gap) nearest = { id: other.id, gap };
-    }
-    return nearest;
+interface BodyShape {
+    scale: [number, number, number];
+    boxSize: [number, number, number];
+    boxCenter: [number, number, number];
+    arrow: Pose;
 }
+
+interface BodyArt {
+    body: Prefab;
+    wheel: Prefab;
+    shadow: Prefab;
+    shadowMaterial: Material;
+    shape: BodyShape;
+}
+
 const arrowPose: Pose = {
     position: [0, 2.1400001, 0.079999998], rotation: [0, 1, 0, 0], scale: [1.125, 1.125, 1.125],
 };
@@ -132,6 +124,12 @@ export class OwnedArtGameplay extends Component {
     private sky!: Node;
     private plane!: Node;
     private nextTitle?: Node;
+    private thirdTitle?: Node;
+    private thirdBoard?: BusLevel;
+    private loadThirdArt!: () => Promise<void>;
+    private switchConveyor!: () => void;
+    private conveyorRoot?: Node;
+    private readonly bodyArt = new Map<number, BodyArt>();
     private loadNextArt!: () => Promise<void>;
     private nextArt?: Promise<void>;
     private readonly adSlots: Node[] = [];
@@ -333,23 +331,30 @@ export class OwnedArtGameplay extends Component {
         this.createScene(poses, background, parking, backdropMaterial, pavementMaterial, levelOne, vipMark, vipMaterial, badge);
         this.vehicleDrive = new VehicleDrive(this.ground, vehicleSmoke);
         this.createConveyor(levelOne, roadMaterial);
+        this.bodyArt.set(10, { body, wheel, shadow: carShadow, shadowMaterial: carShadowMaterial, shape: {
+            scale: [stationScale.x, stationScale.y, stationScale.z], boxSize: [1.92, 2.63148, 4.68043],
+            boxCenter: [0, 1.31574, 0], arrow: arrowPose,
+        } });
+        const thirdPaint = new Map<BusRoute, Material>();
         this.buildActors = () => {
             this.level.fleet.forEach((vehicle) => {
+                const art = this.bodyArt.get(vehicle.groups ?? 10)!;
                 const car = new Node(vehicle.id);
                 car.parent = this.ground;
-                car.setScale(stagingScale);
                 const bodyAndWheels = new Node('Bus_001 and Wheel_001');
                 bodyAndWheels.parent = car;
-                const bodyNode = this.model(body, bodyAndWheels, (busMaterials as Record<BusRoute, Material>)[vehicle.route]);
-                this.model(wheel, bodyAndWheels, (busMaterials as Record<BusRoute, Material>)[vehicle.route]);
+                const standardPaint = (busMaterials as Record<BusRoute, Material>)[vehicle.route];
+                const paint = this.level.number === 3 ? thirdPaint.get(vehicle.route)! : standardPaint;
+                const bodyNode = this.model(art.body, bodyAndWheels, paint);
+                this.model(art.wheel, bodyAndWheels, paint);
                 const arrowNode = this.model(arrow, bodyNode, arrowMaterial);
-                originalPose(arrowNode, arrowPose);
-                const outline = this.model(body, bodyAndWheels, highlight);
+                originalPose(arrowNode, art.shape.arrow);
+                const outline = this.model(art.body, bodyAndWheels, highlight);
                 outline.setScale(1.13, 1.08, 1.07);
                 outline.active = false;
                 this.vehicleModels.set(vehicle.id, { bodyAndWheels, arrow: arrowNode, outline });
-                const shadow = this.model(carShadow, car, carShadowMaterial);
-                this.model(carShadow, shadow, carShadowMaterial);
+                const shadow = this.model(art.shadow, car, art.shadowMaterial);
+                this.model(art.shadow, shadow, art.shadowMaterial);
                 this.cars.set(vehicle.id, car);
             });
             this.riders = this.round.queue.map((route, index) => {
@@ -433,7 +438,41 @@ export class OwnedArtGameplay extends Component {
                 }
             };
         };
+        this.loadThirdArt = async () => {
+            const [config, road, title, smallBody, smallWheel, smallShadow, smallShadowMap,
+                vanBody, vanWheel, vanShadow, vanShadowMap, ratingTexture] = await Promise.all([
+                loadOwnedArt('level-three', JsonAsset), loadOwnedArt('level-three-conveyor/texture', Texture2D),
+                loadOwnedArt('level-three-title/texture', Texture2D), loadOwnedModel('bus-body'),
+                loadOwnedModel('bus-wheel'), loadOwnedModel('car-shadow'), loadOwnedArt('car-shadow-material/texture', Texture2D),
+                loadOwnedModel('van-body'), loadOwnedModel('van-wheel'), loadOwnedModel('van-shadow'),
+                loadOwnedArt('van-shadow-map/texture', Texture2D), loadOwnedArt('third-rating/texture', Texture2D),
+            ]);
+            if (!isValid(this, true)) return;
+            const data = config.json as AuthoredBoard & Pick<LevelOneScene, 'conveyor' | 'queue'> & { shapes: Record<number, BodyShape>; rating: RatingLayout };
+            // Measured against the parked roofs in the third-board reference frame.
+            for (const [route, gain] of [['teal', [0.78, 0.91, 1.10]], ['amber', [1.17, 1.07, 0.63]],
+                ['red', [1.03, 0.38, 0.65]]] as const) {
+                const paint = new Material();
+                paint.copy(busMaterials[route]);
+                paint.setProperty('displayGain', new Vec4(...gain, 1));
+                thirdPaint.set(route, paint);
+                this.materials.push(paint);
+            }
+            this.thirdBoard = makeThirdLevel(data);
+            this.resultPanels!.prepareRating(ratingTexture, data.rating);
+            const smallMat = this.shadowMaterial(smallShadowMap, 0.8);
+            const vanMat = this.shadowMaterial(vanShadowMap, 0.8);
+            const roadMat = originalStageMaterial(stageEffect, road, true);
+            this.materials.push(smallMat, vanMat, roadMat);
+            this.bodyArt.set(4, { body: smallBody, wheel: smallWheel, shadow: smallShadow, shadowMaterial: smallMat, shape: data.shapes[4] });
+            this.bodyArt.set(6, { body: vanBody, wheel: vanWheel, shadow: vanShadow, shadowMaterial: vanMat, shape: data.shapes[6] });
+            this.thirdTitle = this.makeImage('Original Level 3 title', title);
+            this.positionHud(this.thirdTitle, this.hud!.level);
+            this.thirdTitle.active = false;
+            this.switchConveyor = () => this.createConveyor(data, roadMat, data.streams[0].reduce((n, wave) => n + wave[1], 0));
+        };
         this.ready = true;
+        log('[OwnedGameplay] campaign boards=3');
         log(`[OwnedGameplay] vat idle=${clips.idle.frameStart}+${clips.idle.frameCount} move=${clips.move.frameStart}+${clips.move.frameCount} board=${clips.board.frameStart}+${clips.board.frameCount}`);
         this.reset('enter');
         this.scheduleOnce(() => this.reportTapCenters(), 0.15);
@@ -509,9 +548,15 @@ export class OwnedArtGameplay extends Component {
         });
     }
 
-    private createConveyor(levelOne: LevelOneScene, roadMaterial: Material): void {
+    private createConveyor(levelOne: Pick<LevelOneScene, 'conveyor' | 'queue'>, roadMaterial: Material, split?: number): void {
         const { conveyor, queue } = levelOne;
-        const root = new Node('ConveyorBelt1');
+        if (this.conveyorRoot) {
+            this.conveyorRoot.active = false;
+            this.conveyorRoot.destroy();
+            this.conveyorMesh?.destroy();
+        }
+        const root = new Node(split === undefined ? 'ConveyorBelt1' : 'ConveyorBelt2');
+        this.conveyorRoot = root;
         root.parent = this.ground;
         originalPose(root, conveyor.root);
         const road = new Node('Loop_01_0');
@@ -527,7 +572,7 @@ export class OwnedArtGameplay extends Component {
         renderer.mesh = this.conveyorMesh;
         renderer.setSharedMaterial(roadMaterial, 0);
 
-        this.conveyor = new PassengerConveyor(this.ground, queue, this.round.queue.length);
+        this.conveyor = new PassengerConveyor(this.ground, queue, this.round.queue.length, split);
         log('[OwnedGameplay] conveyor samples entry=' + queue.entry.length + ' ring=' + queue.ring.length);
     }
 
@@ -556,9 +601,9 @@ export class OwnedArtGameplay extends Component {
         return material;
     }
 
-    private setSeatBadge(slot: number, route: BusRoute, remaining: number): void {
+    private setSeatBadge(slot: number, route: BusRoute, remaining: number, entering = false): void {
         const { badge, badgeLabel } = this.bays[slot];
-        if (remaining === levelOneSeats) {
+        if (entering) {
             badge.getComponentInChildren(MeshRenderer)!.setSharedMaterial(this.seatMaterials[route], 0);
             const screen = view.getFrameSize();
             const scale = this.getComponent(UITransform)!.width / screen.width;
@@ -583,13 +628,23 @@ export class OwnedArtGameplay extends Component {
             car.inverseTransformPoint(localRay.o, ray.o);
             car.inverseTransformPoint(localRay.d, endpoint);
             localRay.d.subtract(localRay.o);
-            const distance = geometry.intersect.rayAABB(localRay, vehicleBounds);
+            const shape = this.bodyArt.get(vehicle.groups ?? 10)!.shape;
+            const bounds = vehicle.groups && vehicle.groups !== 10 ? new geometry.AABB(
+                ...shape.boxCenter, shape.boxSize[0] / 2, shape.boxSize[1] / 2, shape.boxSize[2] / 2) : vehicleBounds;
+            const distance = geometry.intersect.rayAABB(localRay, bounds);
             if (distance > 0 && distance < nearest) {
                 best = vehicle;
                 nearest = distance;
             }
         }
         if (best) this.dispatch(best);
+    }
+
+    private footprint(vehicle: StagedVehicle): VehicleFootprint {
+        const shape = this.bodyArt.get(vehicle.groups ?? 10)!.shape;
+        const factor = this.level.stagingMultiplier ?? 1.29;
+        return { width: shape.boxSize[0] * shape.scale[0] * factor,
+            length: shape.boxSize[2] * shape.scale[2] * factor, centerZ: shape.boxCenter[2] * shape.scale[2] * factor };
     }
 
     private dispatch(vehicle: StagedVehicle): void {
@@ -599,7 +654,13 @@ export class OwnedArtGameplay extends Component {
         }
         if (this.contacting.has(vehicle.id) || this.round.bays.indexOf(null) < 0) return;
         const car = this.cars.get(vehicle.id)!;
-        const obstruction = firstObstruction(vehicle, this.level.fleet, this.round.ready);
+        const footprint = this.footprint(vehicle);
+        let obstruction: { id: string; gap: number } | undefined;
+        for (const other of this.level.fleet) {
+            if (other === vehicle || !this.round.ready.has(other.id)) continue;
+            const gap = distanceToBlocker(vehicle, footprint, other, this.footprint(other));
+            if (gap < (obstruction?.gap ?? Infinity)) obstruction = { id: other.id, gap };
+        }
         if (obstruction) {
             this.contacting.add(vehicle.id);
             const heading = Vec3.transformQuat(new Vec3(), Vec3.UNIT_Z, car.rotation);
@@ -619,7 +680,7 @@ export class OwnedArtGameplay extends Component {
         if (slot < 0) return;
         this.report('dispatch', vehicle.id);
         const bay = this.bays[slot];
-        tween(car).to(this.level.driveInSeconds, { scale: stationScale }, { easing: 'smooth' }).start();
+        tween(car).to(this.level.driveInSeconds, { scale: new Vec3(...this.bodyArt.get(vehicle.groups ?? 10)!.shape.scale) }, { easing: 'smooth' }).start();
         this.vehicleDrive!.enter(car, bay.position, bay.rotation, this.level.driveInSeconds, () => {
             this.vehicleModels.get(vehicle.id)!.arrow.active = false;
             const belt = this.conveyor!;
@@ -632,7 +693,7 @@ export class OwnedArtGameplay extends Component {
                     log(`[OwnedGameplay] arrival-reservation ${vehicle.id} rider=${rider} slot=${slot}`);
                 }
             }
-            this.setSeatBadge(slot, vehicle.route, levelOneSeats);
+            this.setSeatBadge(slot, vehicle.route, vehicleSeats(vehicle), true);
             this.report('parked', vehicle.id);
             this.playAvailableBoarding();
         });
@@ -648,7 +709,7 @@ export class OwnedArtGameplay extends Component {
         if (outcome !== 'playing') {
             if (outcome === 'won') {
                 this.tutorialComplete = true;
-                if (this.level === firstLevel) void this.prepareSecondLevel().catch(error =>
+                if (this.level.number < 3) void this.prepareNextLevel().catch(error =>
                     log('[OwnedGameplay] level-prefetch-error ' + String(error)));
             }
             this.resultShown = true;
@@ -723,8 +784,8 @@ export class OwnedArtGameplay extends Component {
         });
     }
 
-    private prepareSecondLevel(): Promise<void> {
-        if (!this.nextArt) this.nextArt = this.loadNextArt().catch(error => {
+    private prepareNextLevel(): Promise<void> {
+        if (!this.nextArt) this.nextArt = (this.level === firstLevel ? this.loadNextArt() : this.loadThirdArt()).catch(error => {
             this.nextArt = undefined;
             throw error;
         });
@@ -732,10 +793,10 @@ export class OwnedArtGameplay extends Component {
     }
 
     private advanceLevel(): boolean {
-        if (this.level !== firstLevel) return false;
+        if (this.level.number >= 3) return false;
         if (this.transitioning) return true;
         this.transitioning = true;
-        void this.prepareSecondLevel().then(() => {
+        void this.prepareNextLevel().then(() => {
             if (isValid(this, true)) this.playTransition();
         }).catch(error => {
             if (!isValid(this, true)) return;
@@ -752,12 +813,13 @@ export class OwnedArtGameplay extends Component {
         const height = canvas.width * screen.height / screen.width;
         this.sky.getComponent(UITransform)!.setContentSize(canvas.width, height + 2);
         this.sky.setPosition(0, height, 0);
+        this.sky.setSiblingIndex(this.node.children.length - 1);
         this.sky.active = true;
         this.plane.getComponent(UITransform)!.setContentSize(canvas.width * 0.63, canvas.width * 0.42);
         this.plane.getComponent(UITransform)!.setAnchorPoint(0.83, 0.80);
         this.plane.setPosition(-canvas.width * 0.18, height * 0.35, 0);
         tween(this.plane).to(2.2, {position: new Vec3(canvas.width * 0.52, height * 0.58, 0)}).start();
-        log('[OwnedGameplay] sky-transition 1->2');
+        log(`[OwnedGameplay] sky-transition ${this.level.number}->${this.level.number + 1}`);
         tween(this.sky).to(1.0, { position: new Vec3(0, 0, 0) }, { easing: 'quadOut' })
             .call(() => {
                 this.stopMoves();
@@ -767,15 +829,16 @@ export class OwnedArtGameplay extends Component {
                 }
                 this.cars.clear();
                 this.vehicleModels.clear();
-                this.level = levelTwo;
-                this.showAdMarks();
+                this.level = this.level === firstLevel ? levelTwo : this.thirdBoard!;
+                this.nextArt = undefined;
+                if (this.level === levelTwo) this.showAdMarks();
                 this.reset('next-level');
             }).delay(0.60).to(0.60, { position: new Vec3(0, -height, 0) }, { easing: 'quadIn' })
             .call(() => {
                 this.sky.active = false;
                 this.transitioning = false;
                 this.reportTapCenters();
-                log('[OwnedGameplay] level-playable 2');
+                log('[OwnedGameplay] level-playable ' + this.level.number);
             }).start();
     }
 
@@ -783,7 +846,10 @@ export class OwnedArtGameplay extends Component {
         if (!this.ready || (this.transitioning && event !== 'next-level')) return;
         this.stopMoves();
         this.round = new LevelOneDispatch(this.level);
-        if (event === 'next-level') this.buildActors();
+        if (event === 'next-level') {
+            if (this.level.number === 3) this.switchConveyor();
+            this.buildActors();
+        }
         this.paused = false;
         this.introReady = false;
         this.guideClock = 0;
@@ -796,7 +862,7 @@ export class OwnedArtGameplay extends Component {
         this.level.fleet.forEach((vehicle) => {
             const car = this.cars.get(vehicle.id)!;
             car.active = true;
-            car.setScale(stagingScale);
+            car.setScale(new Vec3(...this.bodyArt.get(vehicle.groups ?? 10)!.shape.scale).multiplyScalar(this.level.stagingMultiplier ?? 1.29));
             car.setPosition(vehicle.position);
             car.setRotationFromEuler(0, vehicle.yaw, 0);
             const { bodyAndWheels, arrow } = this.vehicleModels.get(vehicle.id)!;
@@ -907,6 +973,7 @@ export class OwnedArtGameplay extends Component {
         const showHud = outcome !== 'lost';
         this.levelTitle!.active = showHud && this.level.number === 1;
         if (this.nextTitle) this.nextTitle.active = showHud && this.level.number === 2;
+        if (this.thirdTitle) this.thirdTitle.active = showHud && this.level.number === 3;
         this.pauseNode!.active = showHud;
         this.propNodes.forEach((node) => { node.active = showHud; });
         this.status.node.active = false;

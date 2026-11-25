@@ -1,5 +1,5 @@
 import type { Outcome } from './DispatchRound';
-import type { BusLevel, BusRoute, StagedVehicle } from './BusLevels';
+import { BusLevel, BusRoute, StagedVehicle, vehicleSeats } from './BusLevels';
 
 interface BoardingGroup {
     members: number[];
@@ -30,7 +30,8 @@ export class LevelOneDispatch {
     private readonly exiting = new Set<string>();
 
     constructor(level: BusLevel) {
-        this.queue = level.waves.flatMap(([route, count]) => Array<BusRoute>(count).fill(route));
+        const waves = level.secondWaves ? [...level.waves, ...level.secondWaves] : level.waves;
+        this.queue = waves.flatMap(([route, count]) => Array<BusRoute>(count).fill(route));
         this.totalPassengers = this.queue.length;
         this.ready = new Set(level.fleet.map(({ id }) => id));
     }
@@ -44,7 +45,7 @@ export class LevelOneDispatch {
     dispatch(vehicle: StagedVehicle): number {
         const slot = this.bays.indexOf(null);
         if (slot < 0 || this.outcome !== 'playing' || !this.ready.delete(vehicle.id)) return -1;
-        this.bays[slot] = { vehicle, seatsLeft: levelOneSeats, reserved: 0, stage: 'entering', waitingGroups: [] };
+        this.bays[slot] = { vehicle, seatsLeft: vehicleSeats(vehicle), reserved: 0, stage: 'entering', waitingGroups: [] };
         return slot;
     }
 

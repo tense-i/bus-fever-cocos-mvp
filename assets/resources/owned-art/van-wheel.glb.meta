@@ -1,0 +1,93 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "ca6479a3-e69b-42c7-be0d-ed01d1c33788",
+  "files": [],
+  "subMetas": {
+    "b388c": {
+      "importer": "gltf-mesh",
+      "uuid": "ca6479a3-e69b-42c7-be0d-ed01d1c33788@b388c",
+      "displayName": "",
+      "id": "b388c",
+      "name": "Wheel_001_0.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 136
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ea6e2": {
+      "importer": "gltf-material",
+      "uuid": "ca6479a3-e69b-42c7-be0d-ed01d1c33788@ea6e2",
+      "displayName": "",
+      "id": "ea6e2",
+      "name": "DefaultMaterial.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "772c4": {
+      "importer": "gltf-scene",
+      "uuid": "ca6479a3-e69b-42c7-be0d-ed01d1c33788@772c4",
+      "displayName": "",
+      "id": "772c4",
+      "name": "van-wheel.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "ca6479a3-e69b-42c7-be0d-ed01d1c33788@b388c"
+      ],
+      "skeletons": [],
+      "textures": [],
+      "materials": [
+        "ca6479a3-e69b-42c7-be0d-ed01d1c33788@ea6e2"
+      ],
+      "scenes": [
+        "ca6479a3-e69b-42c7-be0d-ed01d1c33788@772c4"
+      ]
+    }
+  }
+}

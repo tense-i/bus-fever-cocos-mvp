@@ -14,7 +14,7 @@ adb -s "$serial" shell sha256sum "$device_apk" | tr -d '\r' > "$proof/installed.
 shasum -a 256 "$apk" > "$proof/candidate.sha256"
 test "$(cut -d ' ' -f1 "$proof/installed.sha256")" = "$(cut -d ' ' -f1 "$proof/candidate.sha256")"
 record="/sdcard/level-one-individual-$(date +%s).mp4"
-record_pid=$(adb -s "$serial" shell "nohup screenrecord --time-limit 150 --size 540x1200 --bit-rate 4200000 '$record' </dev/null >/dev/null 2>&1 & echo \$!" | tr -d '\r')
+record_pid=$(adb -s "$serial" shell "nohup screenrecord --time-limit 180 --size 540x1200 --bit-rate 4200000 '$record' </dev/null >/dev/null 2>&1 & echo \$!" | tr -d '\r')
 printf '%s\n' "$record_pid" > "$proof/screenrecord.log"
 save_recording() {
   echo "Recorded outcome=$1"
@@ -140,7 +140,7 @@ if [[ "$scenario" != legacy ]]; then
 fi
 wait_log '[OwnedGameplay] victory-reward {"amount":20,"balance":120}' 1
 capture reward
-if [[ "$scenario" = second-failure-fixture ]] ||
+if [[ "$scenario" = second-failure-fixture || "$scenario" = third-failure-fixture ]] ||
    { [[ "$scenario" = current ]] && rg -qF '"event":"enter","level":1' "$proof/runtime-current.log"; }; then
   source "$(dirname "$0")/replay_second_board.sh"
   exit 0

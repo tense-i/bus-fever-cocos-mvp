@@ -45,6 +45,22 @@ export class VehicleDrive {
         const heading = this.heading(car.rotation);
         // The authored slot axis points out of the bay. The vehicle faces into the bay.
         const intoBay = this.heading(bayRotation).multiplyScalar(-1);
+        if (heading.z < -0.9) {
+            // Downward arrows leave below the last row, then return up the outside lane.
+            const side = destination.x >= start.x ? 2.25 : -2.25;
+            const bend = new Vec3(start.x, start.y, Math.min(start.z - 0.4, -5.35));
+            const edge = new Vec3(side, start.y, bend.z + 0.48);
+            const lane = new Vec3(side, start.y, destination.z - 0.64);
+            this.startEmission(car);
+            tween(car).then(this.line(car, start, bend, 0.20))
+                .then(this.segment(car, bend, bend.clone().add3f(0, 0, -0.65),
+                    edge.clone().add3f(0, 0, -0.8), edge, 0.18))
+                .then(this.line(car, edge, lane, 0.22))
+                .then(this.segment(car, lane, lane.clone().add3f(0, 0, 0.38),
+                    destination.clone().subtract(intoBay.multiplyScalar(0.45)), destination, 0.20))
+                .call(() => this.finish(car, 'enter', done)).start();
+            return;
+        }
         const distance = Vec3.distance(start, destination);
         const bound = heading.x > 0 ? 2.1 : -2.1;
         const toBoundary = Math.abs(heading.x) > 0.01 ? (bound - start.x) / heading.x : Infinity;

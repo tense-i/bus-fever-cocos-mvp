@@ -9,6 +9,7 @@ export interface StagedVehicle {
     route: BusRoute;
     position: Vec3;
     yaw: number;
+    groups?: number;
 }
 
 export interface BusLevel {
@@ -19,6 +20,8 @@ export interface BusLevel {
     driveInSeconds: number;
     fleet: readonly StagedVehicle[];
     waves: ReadonlyArray<readonly [BusRoute, number]>;
+    secondWaves?: ReadonlyArray<readonly [BusRoute, number]>;
+    stagingMultiplier?: number;
 }
 
 function car(id: string, route: BusRoute, x: number, z: number, yaw: number): StagedVehicle {
@@ -60,3 +63,25 @@ export const levelTwo: BusLevel = {
         ['orange', 20], ['green', 20], ['purple', 20], ['orange', 20],
     ],
 };
+
+export interface AuthoredBoard {
+    fleet: { id: string; route: BusRoute; groups: number; x: number; z: number; yaw: number }[];
+    streams: [BusLevel['waves'], BusLevel['waves']];
+    mapScale: number;
+}
+
+export function makeThirdLevel(data: AuthoredBoard): BusLevel {
+    return {
+        number: 3, entrySeconds: 0.96, fillSeconds: 2.54, settleRate: 0.42, driveInSeconds: 0.55,
+        fleet: data.fleet.map(v => ({
+            ...v,
+            // Unity's board is mirrored on X and placed on the foreground of the depot.
+            position: new Vec3(-v.x * data.mapScale, 0, v.z * data.mapScale - 3.23),
+        })),
+        waves: data.streams[0], secondWaves: data.streams[1], stagingMultiplier: data.mapScale,
+    };
+}
+
+export function vehicleSeats(v: StagedVehicle): number {
+    return (v.groups ?? 10) * 4;
+}

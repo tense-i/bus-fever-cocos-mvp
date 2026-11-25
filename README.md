@@ -1,18 +1,18 @@
 # Bus Fever Cocos MVP
 
-基于 Cocos Creator 3.8.8 的可连续游玩前两关的工程。项目包含 TypeScript 源码、场景、Android 构建配置，以及运行所需的模型、贴图和动画资源。
+基于 Cocos Creator 3.8.8 的可连续游玩前三关的工程。项目包含 TypeScript 源码、场景、Android 构建配置，以及运行所需的模型、贴图和动画资源。
 
 ## 运行
 
 1. 安装 Cocos Creator 3.8.8，导入仓库根目录。
 2. 在资源面板打开 `assets/OwnedArtGameplay.scene`，启动预览。
-3. 等乘客进入环道后，按颜色发车。满员车辆会离场，最后一辆车离场后进入胜利结算。首关点击 Next 领取奖励后会经过飞机与天空转场，自动进入第二关。第二关结算后可以重玩。
+3. 等乘客进入环道后，按颜色发车。满员车辆会离场，最后一辆车离场后进入胜利结算。首关点击 Next 领取奖励后会经过飞机与天空转场，自动进入第二关。第二关领奖后进入第三关，第三关结算后可以重玩。
 
 ## 构建 Android
 
 在 Creator 构建面板选 Android，启动场景选 `OwnedArtGameplay`，ABI 选 `arm64-v8a`，使用调试签名。仓库根目录的 `android-build.json` 提供这套构建配置。SDK、NDK 和 JDK 使用本机 Creator 配置。 早期二维场景可用 `android-depot-baseline.json` 单独构建。
 
-Android 回放覆盖两关连续进场、720 人登车、18 辆车满载离场、两个奖励、受阻回退、暂停和当前关重开。行车曲线和部分动画时序依据首关录像拟合，仍在逐项对照。
+Android 回放覆盖三关连续进场、1200 人登车、40 辆车满载离场、三次奖励、受阻回退、暂停和当前关重开。行车曲线和部分动画时序依据首关录像拟合，仍在逐项对照。
 
 ## Android 整关验收
 
@@ -45,6 +45,14 @@ python3 tools/replay_reference_timing.py "$(command -v adb)" emulator-5586 "$apk
 
 停车场有两列车阵，共十二辆。上方两辆紫车朝右，中排两辆绿车朝左，其余八辆朝上；车头前方有车时，车辆前移接触后退回。四个普通车位按空位顺序预订，满员车开始离场时腾位。每辆车载 40 人，合计 480 人。
 
-第二关的紫、橙、粉、绿车漆和乘客颜色、天空、飞机、云、加号车位及关卡标题均取自原 APK。关卡摆位、颜色波次和部分时序按首关之后的同一段录像拟合。三个额外车位显示原加号美术，广告解锁尚待后续批次。关卡进度目前按会话维护。
+第二关的紫、橙、粉、绿车漆和乘客颜色、天空、飞机、云、加号车位及关卡标题均取自原 APK。前两关色序已经和原包 A/B 两个配置组逐项核对。前两关停车场的屏幕位置及部分时序按录像拟合。三个额外车位显示原加号美术，广告解锁尚待后续批次。关卡进度目前按会话维护。
 
-运行 `bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586` 会从首关直接测试到第二关结算，核对十二次发车及实际停车位、两关逐席计数、钱包 100 → 120 → 140、碰撞回退、暂停和重开。美术源输入为 `base.apk`，有 UnityPy、Pillow 和 assimp 的环境可以执行 `python3 tools/export_level_two_art.py base.apk assets/resources/owned-art` 复现本批原素材导入。
+运行 `bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586` 会从首关连续测试到第三关结算，核对十二次发车及实际停车位、三关逐席计数、钱包 100 → 120 → 140 → 160、碰撞回退、暂停和重开。美术源输入为 `base.apk`，有 UnityPy、Pillow 和 assimp 的环境可以执行 `python3 tools/export_level_two_art.py base.apk assets/resources/owned-art` 复现本批原素材导入。
+
+## 第三关
+
+第二关领奖后复用天空转场，切换到原 `ConveyorBelt2` 的双入口环道。第三关的 22 辆车、车辆配置坐标和朝向，以及两支队列的颜色顺序都来自 APK 中的 LevelConfig。A、B 组的第一至三关配置完全一致，录像中观察到的阵型与之匹配。环道容量是 32 个四人组，左、右入口分别放出 276、204 人。车辆分别有 16、24、40 席；触摸选择、挡车回退和车身缩放均使用对应车型。
+
+第三关结束会出现原评价面板的角色、星星及操作按钮，关闭后领取奖励。当前调试包在会话内处理按钮点击，尚未接入应用商店评分服务。第三关领奖后可以重玩。画面比例、粒子、人物排队运动和车辆路线仍有录像拟合部分。
+
+运行 `bash tools/replay_level_one.sh "$apk" "$evidence" emulator-5586` 可按录像的发车顺序验证连续三关，覆盖第三关蓝色中型车被挡、红车让开后再次发车、双队列完整供给、按车型逐席登车、评价窗关闭、领奖、暂停及重开。第三关素材转换命令为 `python3 tools/export_level_three.py base.apk assets/resources/owned-art/level-three.json export-directory`，也可将第二个参数换成原包中对应的已解析关卡 JSON。

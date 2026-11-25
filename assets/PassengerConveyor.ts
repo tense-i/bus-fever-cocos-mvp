@@ -11,6 +11,16 @@ export interface ConveyorPaths {
     spacing: number;
     ring: Position[];
     entry: Position[];
+    otherEntry?: Position[];
+}
+
+interface Inlet {
+    path: Vec3[];
+    merge: number;
+    length: number;
+    first: number;
+    end: number;
+    next: number;
 }
 
 const normalSpeed = 0.123;
@@ -24,6 +34,9 @@ export class PassengerConveyor {
     private readonly merge: number;
     private readonly step: number;
     private readonly entrySpan: number;
+    private readonly inlets: Inlet[] = [];
+    private readonly ringLength: number;
+    private readonly fillArc: number;
     private readonly sample = new Vec3();
     private elapsed = 0;
     private entryTravelTime = 0;
@@ -37,24 +50,32 @@ export class PassengerConveyor {
     private readonly reservedCells = new Map<number, number>();
     readonly exitCells: number[] = [];
 
-    constructor(ground: Node, private readonly paths: ConveyorPaths, avatarCount: number) {
+    constructor(ground: Node, private readonly paths: ConveyorPaths, avatarCount: number, split?: number) {
         const local = ([x, y, z]: Position) => ground.inverseTransformPoint(new Vec3(), new Vec3(-x, y, z));
         this.ring = paths.ring.map(local);
-        const entry = paths.entry.map(local).reverse();
-        const end = entry[entry.length - 1];
-        let mergeIndex = 0;
-        let distance = Infinity;
-        this.ring.slice(0, -1).forEach((position, index) => {
-            const candidate = Vec3.squaredDistance(position, end);
-            if (candidate < distance) {
-                distance = candidate;
-                mergeIndex = index;
+        this.ringLength = this.length(this.ring);
+        const inlet = (points: Position[], first: number, end: number): Inlet => {
+            const path = points.map(local).reverse();
+            const tip = path[path.length - 1];
+            let closest = 0;
+            for (let i = 1; i < this.ring.length - 1; i++) {
+                if (Vec3.squaredDistance(this.ring[i], tip) < Vec3.squaredDistance(this.ring[closest], tip)) closest = i;
             }
-        });
-        this.entry = [...entry, this.ring[mergeIndex]];
-        this.merge = mergeIndex / (this.ring.length - 1);
-        const ringLength = this.length(this.ring);
-        this.entrySpan = this.length(this.entry) / ringLength;
+            path.push(this.ring[closest]);
+            return { path, merge: closest / (this.ring.length - 1), length: this.length(path), first, end, next: first };
+        };
+        const left = inlet(paths.entry, 0, split ?? avatarCount);
+        this.entry = left.path;
+        this.merge = left.merge;
+        this.entrySpan = left.length / this.ringLength;
+        if (paths.otherEntry && split !== undefined) {
+            const right = inlet(paths.otherEntry, split, avatarCount);
+            this.inlets.push(left, right);
+            const arc = this.wrap(right.merge - left.merge);
+            this.fillArc = Math.max(arc, 1 - arc);
+        } else {
+            this.fillArc = 1;
+        }
         this.cells = Array(Math.min(avatarCount, paths.capacity * rowWidth)).fill(-1);
         this.step = 1 / paths.capacity;
         this.front = -this.entrySpan;
@@ -72,6 +93,12 @@ export class PassengerConveyor {
         this.reservedCells.clear();
         this.exitCells.length = 0;
         for (let i = 0; i < this.cells.length; i++) this.cells[i] = i;
+        if (this.inlets.length) {
+            this.cells.fill(-1);
+            this.admitted = 0;
+            this.front = -1e-8;
+            for (const inlet of this.inlets) inlet.next = inlet.first;
+        }
         riders.forEach((rider) => { rider.active = false; });
     }
 
@@ -79,6 +106,7 @@ export class PassengerConveyor {
         dt: number, riders: readonly Node[],
         setMoving: (index: number, moving: boolean) => void,
     ): boolean {
+        if (this.inlets.length) return this.updateDual(dt, riders, setMoving);
         this.elapsed = Math.min(this.fillDuration, this.elapsed + dt);
         const previous = this.front;
         const filling = this.elapsed < this.fillDuration;
@@ -124,6 +152,62 @@ export class PassengerConveyor {
             riders[i].active = true;
             this.place(riders[i], this.entry, 1 + distance / this.entrySpan, lane, true);
             setMoving(i, filling);
+        }
+        return !filling;
+    }
+
+    private updateDual(dt: number, riders: readonly Node[], setMoving: (id: number, moving: boolean) => void): boolean {
+        this.elapsed += dt;
+        const previous = this.front;
+        const filling = this.elapsed < this.fillDuration;
+        if (this.elapsed >= this.entryTravelTime) {
+            if (filling) {
+                this.front = this.fillArc * (this.elapsed - this.entryTravelTime) / (this.fillDuration - this.entryTravelTime);
+            } else {
+                if (previous < this.fillArc) this.speed = this.fillArc / (this.fillDuration - this.entryTravelTime);
+                const normal = 0.78 / this.ringLength;
+                this.speed = this.boosted ? normal * 1.8 : Math.max(normal, this.speed - this.settleRate * dt);
+                this.front = Math.max(this.fillArc, previous + this.speed * dt);
+            }
+        }
+        this.exitCells.length = 0;
+        for (let cell = 0; cell < this.cells.length; cell += rowWidth) {
+            const lag = this.step * (cell / rowWidth);
+            const current = this.merge + this.front - lag;
+            if (this.cells[cell] < 0) {
+                for (const inlet of this.inlets) {
+                    const before = this.merge + previous - lag - inlet.merge;
+                    if (inlet.next >= inlet.end || Math.floor(current - inlet.merge) <= Math.floor(before)) continue;
+                    for (let lane = 0; lane < rowWidth; lane++) this.cells[cell + lane] = inlet.next++;
+                    this.admitted += rowWidth;
+                    log(`[OwnedGameplay] dual-admit first=${this.cells[cell]} inlet=${inlet.first} cell=${cell}`);
+                    break;
+                }
+            }
+            if (this.cells[cell] < 0) continue;
+            const percent = this.wrap(current);
+            for (let lane = 0; lane < rowWidth; lane++) {
+                const id = this.cells[cell + lane];
+                riders[id].active = true;
+                this.place(riders[id], this.ring, percent, this.laneOffset(lane), true);
+                setMoving(id, true);
+            }
+            if (percent >= this.paths.exitStartPercent && percent <= this.paths.exitEndPercent) this.exitCells.push(cell);
+        }
+        for (const [rider, cell] of this.reservedCells) {
+            const percent = this.wrap(this.merge + this.front - this.step * Math.floor(cell / rowWidth));
+            this.place(riders[rider], this.ring, percent, this.laneOffset(cell), true);
+        }
+        for (const inlet of this.inlets) {
+            const head = Math.min(1, this.elapsed / this.entryTravelTime);
+            for (let id = inlet.next; id < inlet.end; id++) {
+                const offset = id - inlet.next;
+                const t = head - Math.floor(offset / rowWidth) * this.paths.spacing / inlet.length;
+                if (t < 0) break;
+                riders[id].active = true;
+                this.place(riders[id], inlet.path, t, this.laneOffset(offset), true);
+                setMoving(id, filling);
+            }
         }
         return !filling;
     }

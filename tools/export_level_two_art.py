@@ -203,9 +203,15 @@ def export(apk, out):
         )
     plane.alpha_composite(sprites["Img_Feiji"][0], (110, 0))
     plane.save(out / "transition-plane.png")
+    art["sources"]["font"] = export_title(
+        prefab("gamepanel"), 2, out / "level-two-title.png"
+    )
+    (out / "level-two-art.json").write_text(json.dumps(art, indent=2) + "\n")
+
+
+def export_title(panel, level, output):
     # The level header and the locked booster labels share the same node name.
     # Resolve the top HUD branch explicitly to pick the header's material and size.
-    panel = prefab("gamepanel")
     for segment in ("All_Empty", "Top_Empty", "Level_Text"):
         transform = next(
             c.parse_as_object()
@@ -248,7 +254,7 @@ def export(apk, out):
     }
     source = {"config": config, "fontData": font_data, "fontId": object_id(font)}
     size = (round(rect.m_SizeDelta.x), round(rect.m_SizeDelta.y))
-    text = source["config"]["m_text"].format(2)
+    text = source["config"]["m_text"].format(level)
     params = pick["material"]["floats"]
     shadow = alpha_mask(
         atlas,
@@ -275,9 +281,8 @@ def export(apk, out):
         tuple(round(255 * source["config"]["m_fontColor"][k]) for k in "rgba"),
     )
     fill.putalpha(face)
-    Image.alpha_composite(label, fill).save(out / "level-two-title.png")
-    art["sources"]["font"] = source["fontId"]
-    (out / "level-two-art.json").write_text(json.dumps(art, indent=2) + "\n")
+    Image.alpha_composite(label, fill).save(output)
+    return source["fontId"]
 
 
 if __name__ == "__main__":

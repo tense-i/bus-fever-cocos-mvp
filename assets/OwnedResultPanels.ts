@@ -1,5 +1,5 @@
 import {
-    Color, Graphics, JsonAsset, Label, log, Node, sp, Sprite, SpriteFrame, Texture2D,
+    BlockInputEvents, Color, Graphics, JsonAsset, Label, log, Node, sp, Sprite, SpriteFrame, Texture2D,
     UITransform, UIOpacity, view,
 } from 'cc';
 import type { Outcome } from './DispatchRound';
@@ -38,6 +38,11 @@ interface PanelLayout {
         };
     };
     lost: Panel & { titlePosition: [number, number] };
+}
+
+export interface RatingLayout {
+    labels: Record<'Title_Text' | 'Content_Text', {text: string; x: number; y: number; width: number; height: number; font: number}>;
+    buttons: Record<'Btn_Close' | 'Btn_Yellow' | 'Btn_Green', [number, number, number, number]>;
 }
 
 interface ResultArt {
@@ -88,6 +93,9 @@ export class OwnedResultPanels {
     private readonly rewardIcon: Node;
     private readonly rewardLabel: Node;
     private readonly title: Node;
+    private rating?: Node;
+    private ratingShade?: Graphics;
+    private ratingSeen = false;
     private elapsed = 0;
     private panelScale = 1;
     private readonly completeLabel: Label;
@@ -159,8 +167,58 @@ export class OwnedResultPanels {
         this.wallet.setSiblingIndex(this.root.children.length - 1);
     }
 
+    prepareRating(texture: Texture2D, layout: RatingLayout): void {
+        const root = this.child('Third level rating', this.root);
+        root.addComponent(UITransform);
+        root.addComponent(BlockInputEvents);
+        const backdrop = this.child('Rating backdrop', root);
+        backdrop.addComponent(UITransform);
+        this.ratingShade = backdrop.addComponent(Graphics);
+        const panel = this.child('LastRateGuidePanel', root);
+        const frame = new SpriteFrame();
+        frame.texture = texture;
+        const sprite = panel.addComponent(Sprite);
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        sprite.spriteFrame = frame;
+        panel.getComponent(UITransform)!.setContentSize(900, 1220);
+        for (const [key, label] of Object.entries(layout.labels)) {
+            const title = key === 'Title_Text';
+            const text = label.text.replace(/<[^>]+>/g, '');
+            if (!title) {
+                const emphasis = label.text.match(/<color=[^>]+>([^<]+)<\/color>(.*)/);
+                if (emphasis) {
+                    const secondLine = emphasis[1] + emphasis[2];
+                    const firstLine = text.slice(0, -secondLine.length).trim();
+                    this.caption(panel, key, firstLine, [label.x, label.y + 24], [label.width, 64],
+                        label.font, new Color(94, 54, 23)).isBold = true;
+                    this.caption(panel, key + ' emphasis', secondLine, [label.x, label.y - 24], [label.width, 64],
+                        label.font, new Color(198, 36, 58)).isBold = true;
+                    continue;
+                }
+            }
+            const caption = this.caption(panel, key, text, [label.x, label.y],
+                [label.width, label.height], label.font, title ? Color.WHITE : new Color(94, 54, 23),
+                title ? new Color(145, 89, 21) : undefined);
+            caption.isBold = true;
+        }
+        for (const [choice, [x,y,w,h]] of Object.entries(layout.buttons)) {
+            const button = this.child(choice, panel);
+            button.addComponent(UITransform).setContentSize(w,h);
+            button.setPosition(x,y,0);
+            button.on(Node.EventType.TOUCH_END, () => {
+                root.active = false;
+                this.ratingSeen = true;
+                this.action.active = true;
+                log('[OwnedGameplay] rating-dismiss ' + choice);
+            });
+        }
+        root.active = false;
+        this.rating = root;
+    }
+
     show(outcome: Outcome, level: number): [number, number] | null {
         this.outcome = outcome;
+        if (this.rating) this.rating.active = false;
         this.completeLabel.string = 'Level ' + level + ' complete';
         this.rewardState = 'offered';
         this.elapsed = 0;
@@ -203,6 +261,18 @@ export class OwnedResultPanels {
             this.wallet.setPosition(-size.width / 2 + 180 * scale, height / 2 - 80 * scale, 0);
             this.completeLabel.node.setScale(scale, scale, 1);
             this.balanceLabel.string = String(this.balance);
+            if (level === 3 && this.rating && !this.ratingSeen) {
+                this.rating.active = true;
+                this.rating.setScale(this.panelScale, this.panelScale, 1);
+                this.rating.getComponent(UITransform)!.setContentSize(size.width / this.panelScale, height / this.panelScale);
+                const shade = this.ratingShade!;
+                const w = size.width / this.panelScale, h = height / this.panelScale;
+                shade.clear();
+                shade.fillColor = new Color(0, 0, 0, 210);
+                shade.rect(-w/2, -h/2, w, h);
+                shade.fill();
+                log('[OwnedGameplay] rating-visible');
+            }
             this.elapsed = victoryClipAtReveal;
             this.update(0);
             this.character.clearTracks();
@@ -238,7 +308,7 @@ export class OwnedResultPanels {
             this.rewardLabel.setScale(reward, reward, 1);
             const button = this.art.layout.won.victory.button;
             const offset = this.effects.sample(motion.buttonY, this.elapsed) - motion.buttonY[motion.buttonY.length - 1];
-            this.action.active = this.elapsed >= 0.4;
+            this.action.active = this.elapsed >= 0.4 && !this.rating?.active;
             this.action.setPosition(button.position[0] * this.panelScale, (button.position[1] + offset) * this.panelScale, 0);
             this.effects.celebrate(this.elapsed);
             return;
